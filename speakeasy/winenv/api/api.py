@@ -21,7 +21,7 @@ class ApiHandler(object):
 
         def apitemp(f):
             if not callable(f):
-                raise ApiEmuError('Invalid function type supplied: %s' % (str(f)))
+                raise ApiEmuError(f'Invalid function type supplied: {str(f)}')
             f.__apihook__ = (impname or f.__name__, f, argc, conv, ordinal)
             return f
 
@@ -32,7 +32,7 @@ class ApiHandler(object):
 
         def datatmp(f):
             if not callable(f):
-                raise ApiEmuError('Invalid function type supplied: %s' % (str(f)))
+                raise ApiEmuError(f'Invalid function type supplied: {str(f)}')
             f.__datahook__ = (impname, f)
             return f
 
@@ -100,8 +100,7 @@ class ApiHandler(object):
             ord_num = exp_name.split('_')
             if len(ord_num) == 2 and ord_num[1].isdigit():
                 ord_num = int(ord_num[1])
-                handler = self.funcs.get(ord_num)
-                if handler:
+                if handler := self.funcs.get(ord_num):
                     return handler
         return self.funcs.get(exp_name)
 
@@ -155,8 +154,7 @@ class ApiHandler(object):
         return self.emu.mem_copy(dst, src, n)
 
     def read_mem_string(self, addr, width, max_chars=0):
-        string = self.emu.read_mem_string(addr, width=width)
-        return string
+        return self.emu.read_mem_string(addr, width=width)
 
     def mem_string_len(self, addr, width):
         return self.emu.mem_string_len(addr, width)
@@ -165,23 +163,19 @@ class ApiHandler(object):
         ans = ntos.STRING(self.emu.get_ptr_size())
         ans = self.mem_cast(ans, addr)
 
-        string = self.emu.read_mem_string(ans.Buffer, width=1)
-        return string
+        return self.emu.read_mem_string(ans.Buffer, width=1)
 
     def read_unicode_string(self, addr):
         us = ntos.UNICODE_STRING(self.emu.get_ptr_size())
         us = self.mem_cast(us, addr)
 
-        string = self.emu.read_mem_string(us.Buffer, width=2)
-        return string
+        return self.emu.read_mem_string(us.Buffer, width=2)
 
     def read_wide_string(self, addr, max_chars=0):
-        string = self.emu.read_mem_string(addr, width=2, max_chars=max_chars)
-        return string
+        return self.emu.read_mem_string(addr, width=2, max_chars=max_chars)
 
     def read_string(self, addr, max_chars=0):
-        string = self.emu.read_mem_string(addr, width=1, max_chars=max_chars)
-        return string
+        return self.emu.read_mem_string(addr, width=1, max_chars=max_chars)
 
     def write_mem_string(self, string, addr, width):
         return self.emu.write_mem_string(string, addr, width)
@@ -209,43 +203,37 @@ class ApiHandler(object):
     def log_file_access(self, path, event_type, data=None,
                         handle=0, disposition=[], access=[], buffer=0,
                         size=None):
-        profiler = self.emu.get_profiler()
-        if profiler:
+        if profiler := self.emu.get_profiler():
             run = self.emu.get_current_run()
             profiler.log_file_access(run, path, event_type, data, handle,
                                      disposition, access, buffer, size)
 
     def log_process_event(self, proc, event_type, **kwargs):
-        profiler = self.emu.get_profiler()
-        if profiler:
+        if profiler := self.emu.get_profiler():
             run = self.emu.get_current_run()
             profiler.log_process_event(run, proc, event_type, kwargs)
 
     def log_registry_access(self, path, event_type, value_name=None, data=None,
                             handle=0, disposition=[], access=[], buffer=0,
                             size=None):
-        profiler = self.emu.get_profiler()
-        if profiler:
+        if profiler := self.emu.get_profiler():
             run = self.emu.get_current_run()
             profiler.log_registry_access(run, path, event_type, value_name, data, handle,
                                          disposition, access, buffer, size)
 
     def log_dns(self, domain, ip=''):
-        profiler = self.emu.get_profiler()
-        if profiler:
+        if profiler := self.emu.get_profiler():
             run = self.emu.get_current_run()
             profiler.log_dns(run, domain, ip)
 
     def log_network(self, server, port, typ='unknown', proto='unknown', data=b'', method=''):
-        profiler = self.emu.get_profiler()
-        if profiler:
+        if profiler := self.emu.get_profiler():
             run = self.emu.get_current_run()
             profiler.log_network(run, server, port, typ=typ, proto=proto,
                                  data=data, method=method)
 
     def log_http(self, server, port, headers='', body=b'', secure=False):
-        profiler = self.emu.get_profiler()
-        if profiler:
+        if profiler := self.emu.get_profiler():
             run = self.emu.get_current_run()
             profiler.log_http(run, server, port, headers=headers,
                               body=body, secure=secure)
@@ -295,8 +283,7 @@ class ApiHandler(object):
         mm = self.emu.get_address_map(addr)
         if mm and mm.shared:
             fm = self.emu.get_file_manager()
-            fmap = fm.get_mapping_from_addr(mm.get_base())
-            if fmap:
+            if fmap := fm.get_mapping_from_addr(mm.get_base()):
                 for base, view in fmap.views.items():
                     if base == mm.get_base():
                         continue
@@ -340,7 +327,7 @@ class ApiHandler(object):
             return 1
         elif name.endswith('W'):
             return 2
-        raise ApiEmuError('Failed to get character width from function: %s' % (name))
+        raise ApiEmuError(f'Failed to get character width from function: {name}')
 
     def get_va_arg_count(self, fmt):
         """
@@ -363,7 +350,7 @@ class ApiHandler(object):
         ptr = va_list
         ptrsize = self.get_ptr_size()
 
-        for n in range(num_args):
+        for _ in range(num_args):
             arg = int.from_bytes(self.emu.mem_read(ptr, ptrsize), 'little')
             args.append(arg)
             ptr += ptrsize
@@ -404,11 +391,7 @@ class ApiHandler(object):
         for i, c in enumerate(string):
 
             if c == '%':
-                if inside_fmt:
-                    inside_fmt = False
-                else:
-                    inside_fmt = True
-
+                inside_fmt = bool(not inside_fmt)
             if inside_fmt:
                 if c == 'S':
                     s = self.read_wide_string(args.pop(0))
@@ -421,10 +404,9 @@ class ApiHandler(object):
                         s = self.read_wide_string(args.pop(0))
                         new[i - 1] = '\xFF'
                         curr_fmt = ''
-                        new_fmts.append(s)
                     else:
                         s = self.read_string(args.pop(0))
-                        new_fmts.append(s)
+                    new_fmts.append(s)
                 elif c in ('x', 'X', 'd', 'u', 'i'):
                     if curr_fmt.startswith('ll'):
                         if self.get_ptr_size() == 8:
@@ -458,6 +440,6 @@ class ApiHandler(object):
 
         new = ''.join(new)
         new = new.replace('\xFF', '')
-        new = new % tuple(new_fmts)
+        new %= tuple(new_fmts)
 
         return new

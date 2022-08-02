@@ -62,8 +62,7 @@ class WinHttp(api.ApiHandler):
             argv[3] = bypass
 
         conn = self.netman.new_wininet_inst(ua, access, proxy, bypass, flags)
-        hnd = conn.get_handle()
-        return hnd
+        return conn.get_handle()
 
     @apihook('WinHttpConnect', argc=4, conv=_arch.CALL_CONV_STDCALL)
     def WinHttpConnect(self, emu, argv, ctx={}):
@@ -88,8 +87,7 @@ class WinHttp(api.ApiHandler):
 
         sess = wini.new_session(server, port, None, None,
                                 0, 0, None)
-        hdl = sess.get_handle()
-        return hdl
+        return sess.get_handle()
 
     @apihook('WinHttpOpenRequest', argc=7, conv=_arch.CALL_CONV_STDCALL)
     def WinHttpOpenRequest(self, emu, argv, ctx={}):
@@ -127,9 +125,7 @@ class WinHttp(api.ApiHandler):
 
         sess = self.netman.get_wininet_object(hnd)
         req = sess.new_request(verb, objname, ver, ref, accepts, defs, None)
-        hdl = req.get_handle()
-
-        return hdl
+        return req.get_handle()
 
     @apihook('WinHttpGetIEProxyConfigForCurrentUser', argc=1, conv=_arch.CALL_CONV_STDCALL)
     def WinHttpGetIEProxyConfigForCurrentUser(self, emu, argv, ctx={}):
@@ -213,12 +209,11 @@ class WinHttp(api.ApiHandler):
         if not is_ip_address(srv):
             self.log_dns(srv)
 
-        rv = 1
         req_str = req.format_http_request(headers=headers)
 
         self.log_http(srv, port, headers=req_str,
                       body=body, secure=req.is_secure())
-        return rv
+        return 1
 
     @apihook('WinHttpReceiveResponse', argc=2, conv=_arch.CALL_CONV_STDCALL)
     def WinHttpReceiveResponse(self, emu, argv, ctx={}):
@@ -244,8 +239,6 @@ class WinHttp(api.ApiHandler):
         """
         hnd, buf, size, bytes_read = argv
 
-        rv = 1
-
         req = self.netman.get_wininet_object(hnd)
         resp = req.get_response()
         data = resp.read(size)
@@ -256,7 +249,7 @@ class WinHttp(api.ApiHandler):
         if bytes_read:
             self.mem_write(bytes_read, (len(data)).to_bytes(4, 'little'))
 
-        return rv
+        return 1
 
     @apihook('WinHttpCrackUrl', argc=4, conv=_arch.CALL_CONV_STDCALL)
     def WinHttpCrackUrl(self, emu, argv, ctx={}):
@@ -269,11 +262,11 @@ class WinHttp(api.ApiHandler):
         );
         """
         pwszUrl, dwUrlLength, dwFlags, lpUrlComponents = argv
-        cw = 2  # Wide
         rv = False
         # TODO : implement flags
         # url = self.read_mem_string(pwszUrl, dwUrlLength)
         if pwszUrl and lpUrlComponents:
+            cw = 2  # Wide
             url = self.read_mem_string(pwszUrl, cw)
             argv[0] = url
             rv = True
@@ -282,10 +275,10 @@ class WinHttp(api.ApiHandler):
             url_comp = self.mem_cast(uc, lpUrlComponents)
 
             crack = urlparse(url)
-            if crack.scheme == 'https':
-                url_comp.nScheme = windefs.INTERNET_SCHEME_HTTPS
-            elif crack.scheme == 'http':
+            if crack.scheme == 'http':
                 url_comp.nScheme = windefs.INTERNET_SCHEME_HTTP
+            elif crack.scheme == 'https':
+                url_comp.nScheme = windefs.INTERNET_SCHEME_HTTPS
             if url_comp.dwHostNameLength > 0:
                 if url_comp.lpszHostName:
                     host = crack.netloc + '\x00'
@@ -317,9 +310,7 @@ class WinHttp(api.ApiHandler):
         argv[1] = headers
         flags = windefs.get_header_info_winhttp(dwModfier)
         argv[3] = ' | '.join(flags)
-        rv = 1
-
-        return rv
+        return 1
 
     @apihook('WinHttpQueryHeaders', argc=6, conv=_arch.CALL_CONV_STDCALL)
     def WinHttpQueryHeaders(self, emu, argv, ctx={}):
@@ -343,16 +334,14 @@ class WinHttp(api.ApiHandler):
             return 0
 
         # If program checks for WINHTTP_QUERY_STATUS_CODE and the buffer is set, write '200' to buffer
-        if (header_query == windefs.WINHTTP_QUERY_STATUS_CODE) and (buffer != 0):
+        if header_query == windefs.WINHTTP_QUERY_STATUS_CODE:
             self.mem_write(buffer, b'\x32\x00\x30\x00\x30\x00\x00\x00')
             argv[3] = buffer
             self.mem_write(bufferLen, 8)
             argv[4] = bufferLen
 
         argv[5] = 0
-        rv = 1
-
-        return rv
+        return 1
 
     @apihook('WinHttpCloseHandle', argc=1, conv=_arch.CALL_CONV_STDCALL)
     def WinHttpCloseHandle(self, emu, argv, ctx={}):
@@ -361,6 +350,4 @@ class WinHttp(api.ApiHandler):
           HINTERNET hInternet
         );
         """
-        rv = 1
-
-        return rv
+        return 1

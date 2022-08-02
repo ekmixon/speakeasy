@@ -72,23 +72,25 @@ class Kernel32(api.ApiHandler):
         return atom
 
     def find_local_atom(self, s):
-        atom = None
-        for k, v in self.local_atom_table.items():
-            if v[0].lower() == s.lower():
-                atom = k
-                break
-
-        return atom
+        return next(
+            (
+                k
+                for k, v in self.local_atom_table.items()
+                if v[0].lower() == s.lower()
+            ),
+            None,
+        )
 
     # gets atom and its reference count
     def get_local_atom(self, s):
-        atom = None, None
-        for k, v in self.local_atom_table.items():
-            if v[0].lower() == s.lower():
-                atom = k, v[1]
-                break
-
-        return atom
+        return next(
+            (
+                (k, v[1])
+                for k, v in self.local_atom_table.items()
+                if v[0].lower() == s.lower()
+            ),
+            (None, None),
+        )
 
     def delete_local_atom(self, atom):
         if atom in self.local_atom_table:
@@ -260,11 +262,7 @@ class Kernel32(api.ApiHandler):
         HANDLE GetProcessHeap();
         '''
 
-        if not self.heaps:
-            heap = self.create_heap(emu)
-        else:
-            heap = self.heaps[0]
-        return heap
+        return self.heaps[0] if self.heaps else self.create_heap(emu)
 
     @apihook('GetProcessVersion', argc=1)
     def GetProcessVersion(self, emu, argv, ctx={}):
@@ -278,9 +276,7 @@ class Kernel32(api.ApiHandler):
         major = ver['major']
         minor = ver['minor']
 
-        rv = 0xFFFFFFFF & (major << 16 | minor)
-
-        return rv
+        return 0xFFFFFFFF & (major << 16 | minor)
 
     @apihook('DisableThreadLibraryCalls', argc=1)
     def DisableThreadLibraryCalls(self, emu, argv, ctx={}):
@@ -444,8 +440,7 @@ class Kernel32(api.ApiHandler):
         else:
             raise ApiEmuError('Unsupported snapshot type: 0x%x' % (dwFlags))
 
-        cap_def = k32types.get_flag_defines(dwFlags, 'TH32CS')
-        if cap_def:
+        if cap_def := k32types.get_flag_defines(dwFlags, 'TH32CS'):
             cap_def = '|'.join(cap_def)
             argv[0] = cap_def
 
@@ -461,11 +456,9 @@ class Kernel32(api.ApiHandler):
         '''
 
         hSnapshot, pe32, = argv
-        rv = False
-
         snap = self.snapshots.get(hSnapshot)
         if not snap or not pe32 or k32types.TH32CS_SNAPPROCESS not in snap:
-            return rv
+            return False
 
         # Reset the handle index
         snap[k32types.TH32CS_SNAPPROCESS][0] = 1
@@ -485,8 +478,7 @@ class Kernel32(api.ApiHandler):
             pe.szExeFile = proc.image.encode('utf-8') + b'\x00'
 
         self.mem_write(pe32, self.get_bytes(data))
-        rv = True
-        return rv
+        return True
 
     @apihook('Process32Next', argc=2)
     def Process32Next(self, emu, argv, ctx={}):
@@ -537,11 +529,9 @@ class Kernel32(api.ApiHandler):
         '''
 
         hSnapshot, te32, = argv
-        rv = False
-
         snap = self.snapshots.get(hSnapshot)
         if not snap or not te32 or k32types.TH32CS_SNAPTHREAD not in snap:
-            return rv
+            return False
 
         # Reset the handle index
         snap[k32types.TH32CS_SNAPTHREAD][0] = 1
@@ -553,8 +543,7 @@ class Kernel32(api.ApiHandler):
         te.th32OwnerProcessID = snap[k32types.TH32CS_SNAPTHREAD][2]
 
         self.mem_write(te32, self.get_bytes(data))
-        rv = True
-        return rv
+        return True
 
     @apihook('Thread32Next', argc=2)
     def Thread32Next(self, emu, argv, ctx={}):
@@ -597,11 +586,9 @@ class Kernel32(api.ApiHandler):
         '''
 
         hSnapshot, mod32, = argv
-        rv = False
-
         snap = self.snapshots.get(hSnapshot)
         if not snap or not mod32 or k32types.TH32CS_SNAPMODULE not in snap:
-            return rv
+            return False
 
         # Reset the handle index
         snap[k32types.TH32CS_SNAPMODULE][0] = 1
@@ -627,8 +614,7 @@ class Kernel32(api.ApiHandler):
         mod.modBaseSize = module.image_size
         mod.th32ProcessID = snap[k32types.TH32CS_SNAPMODULE][2]
         self.mem_write(mod32, self.get_bytes(data))
-        rv = True
-        return rv
+        return True
 
     @apihook('Module32Next', argc=2)
     def Module32Next(self, emu, argv, ctx={}):
@@ -687,8 +673,7 @@ class Kernel32(api.ApiHandler):
         access, inherit, pid = argv
 
         hnd = 0
-        proc = emu.get_object_from_id(pid)
-        if proc:
+        if proc := emu.get_object_from_id(pid):
             hnd = emu.get_object_handle(proc)
         else:
             emu.set_last_error(windefs.ERROR_INVALID_PARAMETER)
@@ -877,8 +862,7 @@ class Kernel32(api.ApiHandler):
             cmdstr = self.read_mem_string(cmd, cw)
             argv[1] = cmdstr
 
-        def_flags = windefs.get_creation_flags(flags)
-        if def_flags:
+        if def_flags := windefs.get_creation_flags(flags):
             def_flags = ' | '.join(def_flags)
             argv[5] = def_flags
 
@@ -900,10 +884,8 @@ class Kernel32(api.ApiHandler):
 
         self.mem_write(ppi, self.get_bytes(data))
 
-        rv = 1
-
         self.log_process_event(proc, PROC_CREATE)
-        return rv
+        return 1
 
     @apihook('VirtualAlloc', argc=4)
     def VirtualAlloc(self, emu, argv, ctx={}):
@@ -919,8 +901,7 @@ class Kernel32(api.ApiHandler):
         buf = 0
         tag_prefix = 'api.VirtualAlloc'
 
-        prot_def = windefs.get_page_rights(flProtect)
-        if prot_def:
+        if prot_def := windefs.get_page_rights(flProtect):
             prot_def = '|'.join(prot_def)
             argv[3] = prot_def
 
@@ -928,35 +909,29 @@ class Kernel32(api.ApiHandler):
         mm = emu.get_address_map(lpAddress)
         if mm and mm.get_tag() and mm.get_tag().startswith(tag_prefix):
             buf = lpAddress
-        else:
-            if dwSize:
-                if lpAddress:
-                    test = lpAddress & 0xFFFFFFFFFFFFF000
-                else:
-                    # This is an arbitrary base address and will be
-                    # auto-adjusted by the memory manager
-                    test = emu.virtual_mem_base
-                size = dwSize
+        elif dwSize:
+            test = lpAddress & 0xFFFFFFFFFFFFF000 if lpAddress else emu.virtual_mem_base
+            size = dwSize
+            base, size = emu.get_valid_ranges(size, addr=test)
+            while base and base & 0xFFF:
                 base, size = emu.get_valid_ranges(size, addr=test)
-                while base and base & 0xFFF:
-                    base, size = emu.get_valid_ranges(size, addr=test)
-                    test += PAGE_SIZE
+                test += PAGE_SIZE
 
-                emu_perms = self.win_perms_to_emu_perms(flProtect)
-                buf = self.mem_alloc(base=base, size=size, tag=tag_prefix, flags=flProtect,
-                                     perms=emu_perms)
+            emu_perms = self.win_perms_to_emu_perms(flProtect)
+            buf = self.mem_alloc(base=base, size=size, tag=tag_prefix, flags=flProtect,
+                                 perms=emu_perms)
 
-                emu._set_dyn_code_hook(buf, size)
+            emu._set_dyn_code_hook(buf, size)
 
-                # In the wild, I noticed some x64 malware samples that
-                # will rely on the new buffer pointer being placed into the first
-                # location in the x64 register backup on the stack (performed by
-                # the Windows API). Let's do that here.
-                arch = emu.get_arch()
-                if arch == e_arch.ARCH_AMD64:
-                    sp = emu.get_stack_ptr()
-                    p = buf.to_bytes(8, 'little')
-                    self.mem_write(sp + 8, p)
+            # In the wild, I noticed some x64 malware samples that
+            # will rely on the new buffer pointer being placed into the first
+            # location in the x64 register backup on the stack (performed by
+            # the Windows API). Let's do that here.
+            arch = emu.get_arch()
+            if arch == e_arch.ARCH_AMD64:
+                sp = emu.get_stack_ptr()
+                p = buf.to_bytes(8, 'little')
+                self.mem_write(sp + 8, p)
 
         return buf
 
@@ -989,8 +964,7 @@ class Kernel32(api.ApiHandler):
 
         tag_prefix = 'api.VirtualAllocEx.%s.%d' % (proc_path, obj.get_pid())
 
-        prot_def = windefs.get_page_rights(flProtect)
-        if prot_def:
+        if prot_def := windefs.get_page_rights(flProtect):
             prot_def = '|'.join(prot_def)
             argv[4] = prot_def
 
@@ -998,29 +972,24 @@ class Kernel32(api.ApiHandler):
         mm = emu.get_address_map(lpAddress)
         if mm and mm.get_tag().startswith(tag_prefix):
             buf = lpAddress
-        else:
-
-            if dwSize:
-                if lpAddress:
-                    test = lpAddress & 0xFFFFFFFFFFFFF000
-                else:
-                    test = emu.virtual_mem_base
-                size = dwSize
+        elif dwSize:
+            test = lpAddress & 0xFFFFFFFFFFFFF000 if lpAddress else emu.virtual_mem_base
+            size = dwSize
+            base, size = emu.get_valid_ranges(size, addr=test)
+            while base and base & 0xFFF:
                 base, size = emu.get_valid_ranges(size, addr=test)
-                while base and base & 0xFFF:
-                    base, size = emu.get_valid_ranges(size, addr=test)
-                    test += PAGE_SIZE
+                test += PAGE_SIZE
 
-                emu_perms = self.win_perms_to_emu_perms(flProtect)
-                buf = self.mem_alloc(base=base, size=size, tag=tag_prefix,
-                                     flags=flProtect, perms=emu_perms, process=obj)
-                mm = emu.get_address_map(buf)
+            emu_perms = self.win_perms_to_emu_perms(flProtect)
+            buf = self.mem_alloc(base=base, size=size, tag=tag_prefix,
+                                 flags=flProtect, perms=emu_perms, process=obj)
+            mm = emu.get_address_map(buf)
 
-                self.log_process_event(obj, MEM_ALLOC, base=buf,
-                                       size=dwSize, type=flAllocationType,
-                                       protect=argv[4])
+            self.log_process_event(obj, MEM_ALLOC, base=buf,
+                                   size=dwSize, type=flAllocationType,
+                                   protect=argv[4])
 
-                emu._set_dyn_code_hook(buf, size)
+            emu._set_dyn_code_hook(buf, size)
 
         return buf
 
@@ -1174,15 +1143,11 @@ class Kernel32(api.ApiHandler):
          lpParameter, dwCreationFlags, lpThreadId) = argv
 
         proc_obj = emu.get_current_process()
-        def_flags = windefs.get_creation_flags(dwCreationFlags)
-        if def_flags:
+        if def_flags := windefs.get_creation_flags(dwCreationFlags):
             def_flags = ' | '.join(def_flags)
             argv[4] = def_flags
 
-        is_suspended = False
-        if dwCreationFlags & windefs.CREATE_SUSPENDED:
-            is_suspended = True
-
+        is_suspended = bool(dwCreationFlags & windefs.CREATE_SUSPENDED)
         handle, obj = self.create_thread(lpStartAddress, lpParameter,
                                          proc_obj, thread_type='thread', is_suspended=is_suspended)
 
@@ -1213,14 +1178,13 @@ class Kernel32(api.ApiHandler):
         if rv > 0:
             obj.suspend_count -= 1
 
-        if emu.get_arch() == e_arch.ARCH_X86:
-            if not emu.resume_thread(obj):
-                context = obj.get_context()
-                proc = obj.process
-                handle, obj = self.create_thread(context.Eip, 0,
-                                                 proc,
-                                                 thread_type='thread.%s.%d' % (proc.name,
-                                                                               proc.get_id()))
+        if emu.get_arch() == e_arch.ARCH_X86 and not emu.resume_thread(obj):
+            context = obj.get_context()
+            proc = obj.process
+            handle, obj = self.create_thread(context.Eip, 0,
+                                             proc,
+                                             thread_type='thread.%s.%d' % (proc.name,
+                                                                           proc.get_id()))
         return rv
 
     @apihook('SuspendThread', argc=1)
@@ -1254,10 +1218,7 @@ class Kernel32(api.ApiHandler):
 
         obj = self.get_object_from_handle(Thread)
 
-        if not obj:
-            return 0
-
-        return obj.get_id()
+        return obj.get_id() if obj else 0
 
     @apihook('VirtualQuery', argc=3)
     def VirtualQuery(self, emu, argv, ctx={}):
@@ -1303,17 +1264,19 @@ class Kernel32(api.ApiHandler):
           _In_  DWORD  flNewProtect,
           _Out_ PDWORD lpflOldProtect
         );'''
-        rv = 0
-        mm = None
         new = 0
 
         lpAddress, dwSize, flNewProtect, lpflOldProtect = argv
 
         maps = emu.get_mem_maps()
-        for m in maps:
-            if m.get_base() <= lpAddress < m.get_base() + m.get_size():
-                mm = m
-                break
+        mm = next(
+            (
+                m
+                for m in maps
+                if m.get_base() <= lpAddress < m.get_base() + m.get_size()
+            ),
+            None,
+        )
 
         # convert the mem flags
         if mm and lpflOldProtect:
@@ -1329,8 +1292,7 @@ class Kernel32(api.ApiHandler):
             size = dwSize & 0xFFFFFFFFFFFFF000
             new = self.win_perms_to_emu_perms(flNewProtect)
 
-            remainder = dwSize & 0xFFF
-            if remainder:
+            if remainder := dwSize & 0xFFF:
                 size += 0x1000
 
             try:
@@ -1340,7 +1302,7 @@ class Kernel32(api.ApiHandler):
                 self.mem_write(lpflOldProtect, old_prot.to_bytes(4, 'little'))
                 return 1
 
-        return rv
+        return 0
 
     @apihook('VirtualProtectEx', argc=5)
     def VirtualProtectEx(self, emu, argv, ctx={}):
@@ -1400,9 +1362,7 @@ class Kernel32(api.ApiHandler):
         HANDLE GetCurrentProcess();
         '''
 
-        rv = self.get_max_int()
-
-        return rv
+        return self.get_max_int()
 
     @apihook('GetVersion', argc=0)
     def GetVersion(self, emu, argv, ctx={}):
@@ -1413,9 +1373,7 @@ class Kernel32(api.ApiHandler):
         major = ver['major']
         minor = ver['minor']
 
-        rv = 0xFFFFFFFF & ((build << 16) | minor << 8 | major)
-
-        return rv
+        return 0xFFFFFFFF & ((build << 16) | minor << 8 | major)
 
     @apihook('GetLastError', argc=0)
     def GetLastError(self, emu, argv, ctx={}):
@@ -1451,10 +1409,7 @@ class Kernel32(api.ApiHandler):
         );
         '''
 
-        # Non-zero value for success.
-        rv = 1
-
-        return rv
+        return 1
 
     @apihook('GetHandleInformation', argc=2)
     def GetHandleInformation(self, emu, argv, ctx={}):
@@ -1465,10 +1420,7 @@ class Kernel32(api.ApiHandler):
         );
         '''
 
-        # Non-zero value for success.
-        rv = 1
-
-        return rv
+        return 1
 
     @apihook('ExitProcess', argc=1)
     def ExitProcess(self, emu, argv, ctx={}):
@@ -1630,18 +1582,14 @@ class Kernel32(api.ApiHandler):
         '''DWORD GetCurrentThreadId();'''
 
         thread = emu.get_current_thread()
-        rv = thread.get_id()
-
-        return rv
+        return thread.get_id()
 
     @apihook('GetCurrentProcessId', argc=0)
     def GetCurrentProcessId(self, emu, argv, ctx={}):
         '''DWORD GetCurrentProcessId();'''
 
         proc = emu.get_current_process()
-        rv = proc.get_id()
-
-        return rv
+        return proc.get_id()
 
     @apihook('IsProcessorFeaturePresent', argc=1,
              conv=e_arch.CALL_CONV_STDCALL)
@@ -1649,8 +1597,6 @@ class Kernel32(api.ApiHandler):
         '''BOOL IsProcessorFeaturePresent(
               DWORD ProcessorFeature
         );'''
-
-        rv = 1
 
         lookup = {
             25: 'PF_ARM_64BIT_LOADSTORE_ATOMIC',
@@ -1680,7 +1626,7 @@ class Kernel32(api.ApiHandler):
         }
 
         argv[0] = lookup[argv[0]]
-        return rv
+        return 1
 
     @apihook('lstrcmpi', argc=2)
     def lstrcmpi(self, emu, argv, ctx={}):
@@ -1691,18 +1637,13 @@ class Kernel32(api.ApiHandler):
         cw = self.get_char_width(ctx)
 
         string1, string2 = argv
-        rv = 1
-
         cs1 = self.read_mem_string(string1, cw)
         cs2 = self.read_mem_string(string2, cw)
 
         argv[0] = cs1
         argv[1] = cs2
 
-        if cs1.lower() == cs2.lower():
-            rv = 0
-
-        return rv
+        return 0 if cs1.lower() == cs2.lower() else 1
 
     @apihook('lstrcmp', argc=2)
     def lstrcmp(self, emu, argv, ctx={}):
@@ -1713,18 +1654,13 @@ class Kernel32(api.ApiHandler):
         cw = self.get_char_width(ctx)
 
         string1, string2 = argv
-        rv = 1
-
         cs1 = self.read_mem_string(string1, cw)
         cs2 = self.read_mem_string(string2, cw)
 
         argv[0] = cs1
         argv[1] = cs2
 
-        if cs1 == cs2:
-            rv = 0
-
-        return rv
+        return 0 if cs1 == cs2 else 1
 
     @apihook('QueryPerformanceCounter', argc=1)
     def QueryPerformanceCounter(self, emu, argv, ctx={}):
@@ -1733,11 +1669,9 @@ class Kernel32(api.ApiHandler):
         );'''
         lpPerformanceCount, = argv
 
-        rv = 1
-
         self.mem_write(lpPerformanceCount,
                        self.perf_counter.to_bytes(8, 'little'))
-        return rv
+        return 1
 
     @apihook('lstrlen', argc=1)
     def lstrlen(self, emu, argv, ctx={}):
@@ -1837,8 +1771,7 @@ class Kernel32(api.ApiHandler):
         hwnd = 0
 
         proc = emu.get_current_process()
-        console = proc.get_console()
-        if console:
+        if console := proc.get_console():
             win = console.get_window()
             hwnd = win.handle
 
@@ -1870,9 +1803,7 @@ class Kernel32(api.ApiHandler):
 
         uFlags, dwBytes = argv
 
-        chunk = self.heap_alloc(dwBytes, heap='GlobalAlloc')
-
-        return chunk
+        return self.heap_alloc(dwBytes, heap='GlobalAlloc')
 
     @apihook('GlobalSize', argc=1)
     def GlobalSize(self, emu, argv, ctx={}):
@@ -1906,9 +1837,7 @@ class Kernel32(api.ApiHandler):
 
         uFlags, dwBytes = argv
 
-        chunk = self.heap_alloc(dwBytes, heap='LocalAlloc')
-
-        return chunk
+        return self.heap_alloc(dwBytes, heap='LocalAlloc')
 
     @apihook('HeapAlloc', argc=3)
     def HeapAlloc(self, emu, argv, ctx={}):
@@ -1988,11 +1917,7 @@ class Kernel32(api.ApiHandler):
         argv[0] = s1
         argv[1] = s2
 
-        if cw == 2:
-            new = (s1 + s2).encode('utf-16le')
-        else:
-            new = (s1 + s2).encode('utf-8')
-
+        new = (s1 + s2).encode('utf-16le') if cw == 2 else (s1 + s2).encode('utf-8')
         self.mem_write(lpString1, new + b'\x00')
 
         return lpString1
@@ -2072,11 +1997,11 @@ class Kernel32(api.ApiHandler):
 
         hHeap, dwFlags, lpMem, dwBytes = argv
 
-        tag_prefix = 'api.heap'
         new_buf = 0
 
         if hHeap and lpMem and dwBytes:
             mm = emu.get_address_map(lpMem)
+            tag_prefix = 'api.heap'
             if mm and mm.get_tag().startswith(tag_prefix):
                 # Copy the existing data
                 data = self.mem_read(lpMem, mm.get_size())
@@ -2097,11 +2022,11 @@ class Kernel32(api.ApiHandler):
 
         hMem, uBytes, uFlags = argv
 
-        tag_prefix = 'api.heap'
         new_buf = 0
 
         if hMem and uBytes:
             mm = emu.get_address_map(hMem)
+            tag_prefix = 'api.heap'
             if mm and mm.get_tag().startswith(tag_prefix):
                 # Copy the existing data
                 data = self.mem_read(hMem, mm.get_size())
@@ -2122,9 +2047,7 @@ class Kernel32(api.ApiHandler):
 
         flOptions, dwInitialSize, dwMaximumSize = argv
 
-        heap = self.create_heap(emu)
-
-        return heap
+        return self.create_heap(emu)
 
     @apihook('GetCurrentThread', argc=0)
     def GetCurrentThread(self, emu, argv, ctx={}):
@@ -2146,9 +2069,7 @@ class Kernel32(api.ApiHandler):
 
         tls.append(0)
         thread.set_tls(tls)
-        idx = len(tls) - 1
-
-        return idx
+        return len(tls) - 1
 
     @apihook('TlsSetValue', argc=2)
     def TlsSetValue(self, emu, argv, ctx={}):
@@ -2209,9 +2130,7 @@ class Kernel32(api.ApiHandler):
 
         fls.append(0)
         thread.set_fls(fls)
-        idx = len(fls) - 1
-
-        return idx
+        return len(fls) - 1
 
     @apihook('FlsSetValue', argc=2)
     def FlsSetValue(self, emu, argv, ctx={}):
@@ -2271,10 +2190,7 @@ class Kernel32(api.ApiHandler):
         '''
 
         Ptr,  = argv
-        # Just increment the pointer for now
-        rv = Ptr + 1
-
-        return rv
+        return Ptr + 1
 
     @apihook('DecodePointer', argc=1)
     def DecodePointer(self, emu, argv, ctx={}):
@@ -2285,10 +2201,7 @@ class Kernel32(api.ApiHandler):
         '''
 
         Ptr,  = argv
-        # Just decrement the pointer for now
-        rv = Ptr - 1
-
-        return rv
+        return Ptr - 1
 
     @apihook('InitializeCriticalSectionAndSpinCount', argc=2)
     def InitializeCriticalSectionAndSpinCount(self, emu, argv, ctx={}):
@@ -2300,9 +2213,7 @@ class Kernel32(api.ApiHandler):
         '''
 
         lpCriticalSection, dwSpinCount = argv
-        rv = 1
-
-        return rv
+        return 1
 
     @apihook('EnterCriticalSection', argc=1)
     def EnterCriticalSection(self, emu, argv, ctx={}):
@@ -2374,7 +2285,7 @@ class Kernel32(api.ApiHandler):
 
         cmd_ptr = self.command_lines[cw]
         if not cmd_ptr:
-            cmd_ptr = self.mem_alloc((len(cmdline) + 1) * cw, tag='api.command_line.%s' % (fn))
+            cmd_ptr = self.mem_alloc((len(cmdline) + 1) * cw, tag=f'api.command_line.{fn}')
             self.command_lines[cw] = cmd_ptr
 
         if cw == 2:
@@ -2423,15 +2334,12 @@ class Kernel32(api.ApiHandler):
         LPCH GetEnvironmentStrings();
         '''
 
-        out = ''
         fn = ctx['func_name']
         cw = self.get_char_width(ctx)
-        for k, v in emu.get_env().items():
-            out += '%s %s ' % (k, v)
-
+        out = ''.join(f'{k} {v} ' for k, v in emu.get_env().items())
         out = out.strip()
 
-        env_ptr = self.mem_alloc((len(out) + 1) * cw, tag='api.environment.%s' % (fn))
+        env_ptr = self.mem_alloc((len(out) + 1) * cw, tag=f'api.environment.{fn}')
 
         if cw == 2:
             ev = out.encode('utf-16le')

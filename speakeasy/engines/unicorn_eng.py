@@ -23,9 +23,7 @@ hook_id = ct.c_void_p()
 
 def is_platform_intel():
     mach = platform.machine()
-    if mach in ('x86_64', 'i386', 'x86'):
-        return True
-    return False
+    return mach in ('x86_64', 'i386', 'x86')
 
 
 class ToggleableHook(object):
@@ -135,7 +133,7 @@ class EmuEngine(object):
 
     def init_engine(self, eng_arch, mode):
         """Initialize cpu engine"""
-        if eng_arch == arch.ARCH_X86 or eng_arch == arch.ARCH_AMD64:
+        if eng_arch in [arch.ARCH_X86, arch.ARCH_AMD64]:
             _arch = uc.UC_ARCH_X86
         else:
             raise Exception('Invalid architecture')
@@ -177,17 +175,17 @@ class EmuEngine(object):
 
     def reg_write(self, reg, val):
         """Modify register values"""
-        ereg = self.regs.get(reg)
-        if not ereg:
+        if ereg := self.regs.get(reg):
+            return self.emu.reg_write(ereg, val)
+        else:
             raise EmuEngineError('Unknown register: %d' % (reg))
-        return self.emu.reg_write(ereg, val)
 
     def reg_read(self, reg):
         """Read register values"""
-        ereg = self.regs.get(reg)
-        if not ereg:
+        if ereg := self.regs.get(reg):
+            return self.emu.reg_read(ereg)
+        else:
             raise EmuEngineError('Unknown register: %d' % (reg))
-        return self.emu.reg_read(ereg)
 
     def stop(self):
         """Stop the emulation engine"""
@@ -255,16 +253,14 @@ class EmuEngine(object):
         """
         Enable a previously disabled hook
         """
-        hook = self._callbacks.get(hook_handle)
-        if hook:
+        if hook := self._callbacks.get(hook_handle):
             return hook.enable()
 
     def hook_disable(self, hook_handle):
         """
         Disable a previously enabled hook
         """
-        hook = self._callbacks.get(hook_handle)
-        if hook:
+        if hook := self._callbacks.get(hook_handle):
             return hook.disable()
 
     def hook_remove(self, hid):

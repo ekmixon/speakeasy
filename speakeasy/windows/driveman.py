@@ -10,14 +10,10 @@ class DriveManager(object):
     def __init__(self, config=None):
         super(DriveManager, self).__init__()
         self.drives = config
-        self.drive_letters = []
-
-        for drive in self.drives:
-            self.drive_letters.append(drive.get('root_path')[0])
+        self.drive_letters = [drive.get('root_path')[0] for drive in self.drives]
 
     def walk_drives(self):
-        for drive in self.drives:
-            yield drive
+        yield from self.drives
 
     def get_drive(self, root_path='', volume_guid_path=''):
         for drive in self.drives:
@@ -32,8 +28,7 @@ class DriveManager(object):
                     return drive
 
     def get_drive_type(self, root_path):
-        drive = self.get_drive(root_path=root_path)
-        if drive:
+        if drive := self.get_drive(root_path=root_path):
             config_root_path = drive.get('root_path')
             if config_root_path == root_path:
                 config_drive_type = drive.get('drive_type')

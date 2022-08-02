@@ -29,9 +29,7 @@ class Ole32(api.ApiHandler):
         );
         """
 
-        rv = windefs.S_OK
-
-        return rv
+        return windefs.S_OK
 
     @apihook('CoInitialize', argc=1)
     def CoInitialize(self, emu, argv, ctx={}):
@@ -41,9 +39,7 @@ class Ole32(api.ApiHandler):
         );
         """
 
-        rv = windefs.S_OK
-
-        return rv
+        return windefs.S_OK
 
     @apihook('CoInitializeEx', argc=2)
     def CoInitializeEx(self, emu, argv, ctx={}):
@@ -54,9 +50,7 @@ class Ole32(api.ApiHandler):
         );
         """
 
-        rv = windefs.S_OK
-
-        return rv
+        return windefs.S_OK
 
     @apihook('CoUninitialize', argc=0)
     def CoUninitialize(self, emu, argv, ctx={}):
@@ -82,12 +76,10 @@ class Ole32(api.ApiHandler):
 
         rv = windefs.S_OK
 
-        authn_level = com.get_define_int(argv[4])
-        if authn_level:
+        if authn_level := com.get_define_int(argv[4]):
             argv[4] = authn_level
 
-        imp_level = com.get_define_int(argv[5])
-        if imp_level:
+        if imp_level := com.get_define_int(argv[5]):
             argv[5] = imp_level
 
         return rv
@@ -108,17 +100,15 @@ class Ole32(api.ApiHandler):
 
         clsid_bytes = self.mem_read(rclsid, self.sizeof(windefs.GUID()))
         clsid_str = com.convert_guid_bytes_to_str(clsid_bytes)
-        clsid_name = com.get_clsid(clsid_str)
-        if clsid_name:
+        if clsid_name := com.get_clsid(clsid_str):
             argv[0] = clsid_name
             riid_bytes = self.mem_read(riid, self.sizeof(windefs.GUID()))
             riid_str = com.convert_guid_bytes_to_str(riid_bytes)
-            iid_name = com.get_iid(riid_str)
-            if iid_name:
+            if iid_name := com.get_iid(riid_str):
                 argv[3] = iid_name
                 if ppv:
                     ci = emu.com.get_interface(emu, emu.get_ptr_size(), iid_name.replace('IID_', ''))
-                    pv = self.mem_alloc(emu.get_ptr_size(), tag='emu.COM.pv_%s' % iid_name)
+                    pv = self.mem_alloc(emu.get_ptr_size(), tag=f'emu.COM.pv_{iid_name}')
                     self.mem_write(pv, ci.address.to_bytes(emu.get_ptr_size(), 'little'))
                     self.mem_write(ppv, pv.to_bytes(emu.get_ptr_size(), 'little'))
             else:

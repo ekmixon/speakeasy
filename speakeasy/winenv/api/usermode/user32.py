@@ -82,9 +82,7 @@ class User32(api.ApiHandler):
           int  nCmdShow
         );'''
 
-        rv = 1
-
-        return rv
+        return 1
 
     @apihook('CreateWindowStation', argc=4)
     def CreateWindowStation(self, emu, argv, ctx={}):
@@ -109,11 +107,7 @@ class User32(api.ApiHandler):
         '''
         winsta, = argv
 
-        rv = False
-        if winsta:
-            rv = True
-
-        return rv
+        return bool(winsta)
 
     @apihook('GetDC', argc=1)
     def GetDC(self, emu, argv, ctx={}):
@@ -123,9 +117,7 @@ class User32(api.ApiHandler):
         );
         '''
 
-        rv = self.sessman.get_device_context()
-
-        return rv
+        return self.sessman.get_device_context()
 
     @apihook('RegisterClassEx', argc=1)
     def RegisterClassEx(self, emu, argv, ctx={}):
@@ -143,9 +135,7 @@ class User32(api.ApiHandler):
         if wclass.lpszClassName:
             cn = self.read_mem_string(wclass.lpszClassName, cw)
 
-        atom = self.sessman.create_window_class(wclass, cn)
-
-        return atom
+        return self.sessman.create_window_class(wclass, cn)
 
     @apihook('UnregisterClass', argc=2)
     def UnregisterClass(self, emu, argv, ctx={}):
@@ -297,8 +287,7 @@ class User32(api.ApiHandler):
             argv[2] = wn
         else:
             wn = None
-        hnd = self.sessman.create_window(wn, cn)
-        return hnd
+        return self.sessman.create_window(wn, cn)
 
     @apihook('MessageBox', argc=4)
     def MessageBox(self, emu, argv, ctx={}):
@@ -318,9 +307,7 @@ class User32(api.ApiHandler):
         if lpCaption:
             cap = self.read_mem_string(lpCaption, cw)
             argv[2] = cap
-        rv = IDCANCEL
-
-        return rv
+        return IDCANCEL
 
     @apihook('MessageBoxEx', argc=5)
     def MessageBoxEx(self, emu, argv, ctx={}):
@@ -387,11 +374,7 @@ class User32(api.ApiHandler):
             encoded = encoded[:ccBufferMax * cw]
 
         emu.mem_write(lpBuffer, encoded)
-        if cw == 1:
-            argv[2] = s
-        else:
-            argv[2] = s
-
+        argv[2] = s
         return len(encoded)
 
     @apihook('GetCursorPos', argc=1)
@@ -404,8 +387,7 @@ class User32(api.ApiHandler):
 
         lpPoint, = argv
 
-        rv = 0
-        return rv
+        return 0
 
     @apihook('GetKeyboardType', argc=1)
     def GetKeyboardType(self, emu, argv, ctx={}):
@@ -433,8 +415,7 @@ class User32(api.ApiHandler):
 
         nIndex, = argv
 
-        rv = 1
-        return rv
+        return 1
 
     @apihook('LoadBitmap', argc=2)
     def LoadBitmap(self, emu, argv, ctx={}):
@@ -445,8 +426,7 @@ class User32(api.ApiHandler):
         );
         """
         hInstance, lpBitmapName = argv
-        rv = self.get_handle()
-        return rv
+        return self.get_handle()
 
     @apihook('RegisterWindowMessage', argc=1)
     def RegisterWindowMessage(self, emu, argv, ctx={}):
@@ -457,14 +437,12 @@ class User32(api.ApiHandler):
         '''
 
         lpString, = argv
-        rv = 0xc000
-
         cw = self.get_char_width(ctx)
 
         s = self.read_mem_string(lpString, cw)
         argv[0] = s
 
-        return rv
+        return 0xc000
 
     @apihook('wsprintf', argc=_arch.VAR_ARGS, conv=_arch.CALL_CONV_CDECL)
     def wsprintf(self, emu, argv, ctx={}):
@@ -543,8 +521,7 @@ class User32(api.ApiHandler):
         '''
         idHook, lpfn, hmod, dwThreadId = argv
 
-        hname = windefs.get_windowhook_flags(idHook)
-        if hname:
+        if hname := windefs.get_windowhook_flags(idHook):
             hname = hname[0]
             argv[0] = hname
 
@@ -680,10 +657,7 @@ class User32(api.ApiHandler):
         cw = self.get_char_width(ctx)
         win_text = 'speakeasy window'
         if pstr:
-            if cw == 2:
-                wt = (win_text).encode('utf-16le')
-            else:
-                wt = (win_text).encode('utf-8')
+            wt = (win_text).encode('utf-16le') if cw == 2 else (win_text).encode('utf-8')
             self.mem_write(pstr, wt)
 
         return len(win_text)
@@ -730,11 +704,8 @@ class User32(api.ApiHandler):
         );
         '''
         s, = argv
-        rv = 0
         cw = self.get_char_width(ctx)
-        if s:
-            rv = s + cw
-        return rv
+        return s + cw if s else 0
 
     @apihook('EnumWindows', argc=2)
     def EnumWindows(self, emu, argv, ctx={}):
@@ -745,9 +716,7 @@ class User32(api.ApiHandler):
         );
         '''
         lpEnumFunc, lParam = argv
-        rv = 1
-
-        return rv
+        return 1
 
     @apihook('GetSysColor', argc=1)
     def GetSysColor(self, emu, argv, ctx={}):
@@ -757,9 +726,7 @@ class User32(api.ApiHandler):
         );
         '''
         nIndex, = argv
-        rv = 1
-
-        return rv
+        return 1
 
     @apihook('GetParent', argc=1)
     def GetParent(self, emu, argv, ctx={}):
@@ -778,9 +745,7 @@ class User32(api.ApiHandler):
         );
         '''
         nIndex, = argv
-        rv = 1
-
-        return rv
+        return 1
 
     @apihook('GetWindowLong', argc=2)
     def GetWindowLong(self, emu, argv, ctx={}):
@@ -791,9 +756,7 @@ class User32(api.ApiHandler):
         );
         '''
         hWnd, nIndex, = argv
-        rv = 2
-
-        return rv
+        return 2
 
     @apihook('SetWindowLong', argc=3)
     def SetWindowLong(self, emu, argv, ctx={}):

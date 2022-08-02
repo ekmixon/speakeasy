@@ -25,8 +25,7 @@ class GDI32(api.ApiHandler):
 
     def get_handle(self):
         self.handle += 4
-        hnd = self.handle
-        return hnd
+        return self.handle
 
     @apihook('CreateBitmap', argc=5)
     def CreateBitmap(self, emu, argv, ctx={}):

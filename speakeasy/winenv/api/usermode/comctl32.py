@@ -27,6 +27,4 @@ class Comctl32(api.ApiHandler):
         );
         """
         picce, = argv
-        rv = True
-
-        return rv
+        return True

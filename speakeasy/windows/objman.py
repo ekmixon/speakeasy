@@ -111,14 +111,10 @@ class KernelObject(object):
         self.win_types = windef
 
     def sizeof(self, obj=None):
-        if obj:
-            return obj.sizeof()
-        return self.object.sizeof()
+        return obj.sizeof() if obj else self.object.sizeof()
 
     def get_bytes(self, obj=None):
-        if obj:
-            return obj.get_bytes()
-        return self.object.get_bytes()
+        return obj.get_bytes() if obj else self.object.get_bytes()
 
     def read_back(self):
         data = self.emu.mem_read(self.address, self.sizeof())
@@ -141,7 +137,7 @@ class KernelObject(object):
             return self.object.__class__.__name__
 
     def get_mem_tag(self):
-        return 'emu.struct.%s' % (self.get_class_name())
+        return f'emu.struct.{self.get_class_name()}'
 
     def get_handle(self):
         tmp = KernelObject.curr_handle
@@ -181,7 +177,7 @@ class Driver(KernelObject):
 
         us = self.nt_types.UNICODE_STRING(self.emu.get_ptr_size())
         size = self.sizeof(us) + len(buf)
-        addr = self.emu.mem_map(size, tag='emu.object.%s.reg_path' % self.name)
+        addr = self.emu.mem_map(size, tag=f'emu.object.{self.name}.reg_path')
         us.Length = len(buf) - 2
         us.MaximumLength = len(buf)
         us.Buffer = addr + self.sizeof(us)
@@ -202,14 +198,10 @@ class Driver(KernelObject):
         Create the driver section for the driver. This is a linked list that
         links together driver objects
         """
-        tag = 'emu.object.%s.DriverSection' % self.name
+        tag = f'emu.object.{self.name}.DriverSection'
         mod = self.pe
 
-        if mod and mod.get_emu_path():
-            mod_name = mod.get_emu_path()
-        else:
-            mod_name = 'None'
-
+        mod_name = mod.get_emu_path() if mod and mod.get_emu_path() else 'None'
         ldte = LdrDataTableEntry(self.emu, mod_name, tag=tag)
         first = None
         last = None
@@ -234,7 +226,7 @@ class Driver(KernelObject):
         ldte.object.BaseDllName.Length = len(dllname)
         ldte.object.BaseDllName.MaximumLength = len(dllname)
         ldte.object.BaseDllName.Buffer = name_addr + \
-            (ldte.object.FullDllName.Length - len(dllname))
+                (ldte.object.FullDllName.Length - len(dllname))
 
         if not last:
             ldte.object.InLoadOrderLinks.Flink = ldte.address
@@ -243,9 +235,9 @@ class Driver(KernelObject):
             ldte.object.InMemoryOrderLinks.Blink = ldte.address
         else:
             ldte.object.InLoadOrderLinks.Flink = \
-                last.object.InLoadOrderLinks.Flink
+                    last.object.InLoadOrderLinks.Flink
             ldte.object.InMemoryOrderLinks.Flink = \
-                last.object.InMemoryOrderLinks.Flink
+                    last.object.InMemoryOrderLinks.Flink
             ldte.object.InLoadOrderLinks.Blink = last.address
             ldte.object.InMemoryOrderLinks.Blink = last.address
 
@@ -299,8 +291,7 @@ class Driver(KernelObject):
             name = 'none'
 
         # Allocate the driver object
-        addr = self.emu.mem_map(drvobj.Size + len(us),
-                                tag='emu.object.%s' % name)
+        addr = self.emu.mem_map(drvobj.Size + len(us), tag=f'emu.object.{name}')
 
         drvobj.DriverName.Length = len(us)
         drvobj.DriverName.MaximumLength = len(us)
@@ -308,11 +299,7 @@ class Driver(KernelObject):
 
         name = self.name
         idx = name.rfind('\\')
-        if idx >= 0 and idx != len(name) - 1:
-            name = self.name[idx+1:]
-        else:
-            name = 'None'
-
+        name = self.name[idx+1:] if idx >= 0 and idx != len(name) - 1 else 'None'
         self.basename = name
         self.create_reg_path(name)
 
@@ -442,15 +429,15 @@ class Thread(KernelObject):
         return self.seh
 
     def get_context(self):
-        if self.ctx:
-            return self.ctx
-        return self.emu.get_thread_context()
+        return self.ctx or self.emu.get_thread_context()
 
     def set_context(self, ctx):
-        if self.ctx:
-            if self.emu.get_arch() == _arch.ARCH_X86:
-                if ctx.Eip != self.ctx.Eip:
-                    self.modified_pc = True
+        if (
+            self.ctx
+            and self.emu.get_arch() == _arch.ARCH_X86
+            and ctx.Eip != self.ctx.Eip
+        ):
+            self.modified_pc = True
         self.ctx = ctx
 
     def init_teb(self, teb_addr, peb_addr):
@@ -490,7 +477,7 @@ class Thread(KernelObject):
     def init_tls(self, tls_dir, modname):
         ptrsz = self.emu.get_ptr_size()
 
-        tls_dirp = self.emu.mem_map(ptrsz, tag='emu.tls.%s' % (modname))
+        tls_dirp = self.emu.mem_map(ptrsz, tag=f'emu.tls.{modname}')
 
         self.emu.mem_write(tls_dirp, tls_dir)
 
@@ -582,9 +569,7 @@ class Process(KernelObject):
         desk = sm.get_current_desktop()
         desk_name = desk.get_name()
 
-        name = '%s\\%s' % (stat_name, desk_name)
-
-        return name
+        return '%s\\%s' % (stat_name, desk_name)
 
     def get_token(self):
         """
@@ -597,14 +582,18 @@ class Process(KernelObject):
         STD_OUTPUT_HANDLE = 0xfffffff5
         STD_ERROR_HANDLE = 0xfffffff4
 
-        for k, v in ((STD_INPUT_HANDLE, self.stdin),
-                     (STD_OUTPUT_HANDLE, self.stdout),
-                     (STD_ERROR_HANDLE, self.stderr),
-                     ):
-
-            if k == dev:
-                return v
-        return 0
+        return next(
+            (
+                v
+                for k, v in (
+                    (STD_INPUT_HANDLE, self.stdin),
+                    (STD_OUTPUT_HANDLE, self.stdout),
+                    (STD_ERROR_HANDLE, self.stderr),
+                )
+                if k == dev
+            ),
+            0,
+        )
 
     def get_title_name(self):
         return self.title
@@ -644,11 +633,7 @@ class Process(KernelObject):
 
         # Initialize the LDTE
         ldte = LdrDataTableEntry(self.emu, module.get_emu_path())
-        if not self.ldr_entries:
-            prev = ldte
-        else:
-            prev = self.ldr_entries[-1]
-
+        prev = self.ldr_entries[-1] if self.ldr_entries else ldte
         self.ldr_entries.append(ldte)
         first = self.ldr_entries[0]
 
@@ -673,30 +658,30 @@ class Process(KernelObject):
         ldte.object.BaseDllName.Length = len(dllname) - 2
         ldte.object.BaseDllName.MaximumLength = len(dllname)
         ldte.object.BaseDllName.Buffer = name_addr + \
-            (ldte.object.FullDllName.MaximumLength - len(dllname))
+                (ldte.object.FullDllName.MaximumLength - len(dllname))
         ldte.write_back()
 
         prev.object.InLoadOrderLinks.Flink = ldte.address
         prev.object.InMemoryOrderLinks.Flink = ldte.address + \
-            self.sizeof(list_type)
+                self.sizeof(list_type)
 
         if first is ldte:
             prev.object.InInitializationOrderLinks.Flink = 0
         else:
             imol = prev.object.InMemoryOrderLinks.Flink
             prev.object.InInitializationOrderLinks.Flink = imol + \
-                self.sizeof(list_type)
+                    self.sizeof(list_type)
 
         ldte.object.InLoadOrderLinks.Blink = prev.address
         ldte.object.InMemoryOrderLinks.Blink = prev.address + \
-            self.sizeof(list_type)
+                self.sizeof(list_type)
 
         if first is ldte:
             ldte.object.InInitializationOrderLinks.Blink = 0
         else:
             imol = ldte.object.InMemoryOrderLinks.Blink
             ldte.object.InInitializationOrderLinks.Blink = imol + \
-                self.sizeof(list_type)
+                    self.sizeof(list_type)
 
         prev.write_back()
         ldte.write_back()
@@ -710,8 +695,8 @@ class Process(KernelObject):
 
         pld.object.InLoadOrderModuleList.Flink = first.address
         pld.object.InMemoryOrderModuleList.Flink = \
-            pld.object.InLoadOrderModuleList.Flink + \
-            self.sizeof(list_type)
+                pld.object.InLoadOrderModuleList.Flink + \
+                self.sizeof(list_type)
 
         # Lets just copy InMemoryOrderModuleList but skip the main EXE module
         head = pld.object.InMemoryOrderModuleList.Flink
@@ -722,12 +707,12 @@ class Process(KernelObject):
 
         pld.object.InLoadOrderModuleList.Blink = prev.address
         pld.object.InMemoryOrderModuleList.Blink = \
-            pld.object.InLoadOrderModuleList.Blink + \
-            self.sizeof(list_type)
+                pld.object.InLoadOrderModuleList.Blink + \
+                self.sizeof(list_type)
 
         pld.object.InInitializationOrderModuleList.Blink = \
-            pld.object.InMemoryOrderModuleList.Blink + \
-            self.sizeof(list_type)
+                pld.object.InMemoryOrderModuleList.Blink + \
+                self.sizeof(list_type)
 
         pld.write_back()
 
@@ -750,8 +735,7 @@ class RTL_USER_PROCESS_PARAMETERS(KernelObject):
         size = self.sizeof()
         size += len(proc_path)
         size += len(proc_cmdline)
-        self.address = emu.mem_map(size,
-                                   tag=proc.get_mem_tag() + '.ProcessParameters')
+        self.address = emu.mem_map(size, tag=f'{proc.get_mem_tag()}.ProcessParameters')
         emu.mem_write(self.address + self.sizeof(), proc_path)
         emu.mem_write(self.address + self.sizeof() + len(proc_path), proc_cmdline)
 
@@ -775,10 +759,7 @@ class PEB(KernelObject):
         super(PEB, self).__init__(emu=emu)
 
         self.object = self.nt_types.PEB(emu.get_ptr_size())
-        if not address:
-            self.address = emu.mem_map(self.sizeof(), tag=self.get_mem_tag())
-        else:
-            self.address = address
+        self.address = address or emu.mem_map(self.sizeof(), tag=self.get_mem_tag())
 
 
 class TEB(KernelObject):
@@ -790,10 +771,7 @@ class TEB(KernelObject):
         super(TEB, self).__init__(emu=emu)
 
         self.object = self.nt_types.TEB(emu.get_ptr_size())
-        if address:
-            self.address = address
-        else:
-            self.address = emu.mem_map(self.sizeof(), tag=self.get_mem_tag())
+        self.address = address or emu.mem_map(self.sizeof(), tag=self.get_mem_tag())
 
 
 class PebLdrData(KernelObject):
@@ -834,8 +812,10 @@ class IDT(KernelObject):
 
         kbase = self.emu.get_kernel_base()
 
-        descs = self.emu.mem_map(self.sizeof(tbl),
-                                 tag=self.get_mem_tag() + '.idt_entries')
+        descs = self.emu.mem_map(
+            self.sizeof(tbl), tag=f'{self.get_mem_tag()}.idt_entries'
+        )
+
         self.object.Limit = 0xFFF
         self.object.Descriptors = descs
 
@@ -844,7 +824,7 @@ class IDT(KernelObject):
                 entry.OffsetLow = 0 + (4 * i)
                 entry.Base = kbase
         elif self.emu.get_arch() == _arch.ARCH_AMD64:
-            for i, entry in enumerate(tbl.Table):
+            for entry in tbl.Table:
                 entry.OffsetLow = 0xFFFF & kbase
                 entry.OffsetMiddle = (0xFFFF0000 & kbase) >> 16
                 entry.OffsetHigh = (0xFFFFFFFF00000000 & kbase) >> 32
@@ -907,12 +887,7 @@ class ObjectManager(object):
         """
         Remove an object from the object manager
         """
-        addr = None
-        for a, o in self.objects.items():
-            if o == obj:
-                addr = a
-                break
-        if addr:
+        if addr := next((a for a, o in self.objects.items() if o == obj), None):
             self.objects.pop(addr)
 
     def dec_ref(self, obj):
@@ -955,9 +930,9 @@ class ObjectManager(object):
             if o.name.lower() == name.lower():
                 return o
         if check_symlinks:
-            m = [sl[1] for sl in self.symlinks
-                 if name.lower() == sl[0].lower()]
-            if m:
+            if m := [
+                sl[1] for sl in self.symlinks if name.lower() == sl[0].lower()
+            ]:
                 name = m[0]
             return self.get_object_from_name(name, False)
 

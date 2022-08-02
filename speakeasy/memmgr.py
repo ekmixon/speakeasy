@@ -131,12 +131,13 @@ class MemoryManager(object):
         hl = self.hooks.get(common.HOOK_MEM_MAP, [])
         ctx = {}
         for mem_map_hook in hl:
-            if mem_map_hook.enabled:
-                # the mapped memory region's base address falls within the hook's bounds
-                if mem_map_hook.begin <= mm.get_base():
-                    if not mem_map_hook.end or mem_map_hook.end > mm.get_base():
-                        mem_map_hook.cb(self, mm.get_base(), mm.get_size(),
-                                        mm.get_tag(), mm.get_prot(), mm.get_flags(), ctx)
+            if (
+                mem_map_hook.enabled
+                and mem_map_hook.begin <= mm.get_base()
+                and (not mem_map_hook.end or mem_map_hook.end > mm.get_base())
+            ):
+                mem_map_hook.cb(self, mm.get_base(), mm.get_size(),
+                                mm.get_tag(), mm.get_prot(), mm.get_flags(), ctx)
 
     def mem_map(self, size, base=None, perms=common.PERM_MEM_RWX,
                 tag=None, flags=0, shared=False, process=None):
@@ -146,28 +147,27 @@ class MemoryManager(object):
         if not process and tag and not tag.startswith('emu'):
             process = self.get_current_process()
 
-        if base is None:
-            if size < self.page_size and size % self.page_size:
+        if base is None and size < self.page_size and size % self.page_size:
+            addr = self.block_base + self.block_offset
+            pad_size = 0x10 - (size % 0x10)
+            size += pad_size
+            if not self.block_base or ((addr + size) > self.block_base + self.page_size):
+                block = self.get_valid_ranges(self.page_size)
+                self.block_base, self.block_size = block
+
+                self.emu_eng.mem_map(self.block_base, self.block_size)
+                self.block_offset = 0
                 addr = self.block_base + self.block_offset
-                pad_size = 0x10 - (size % 0x10)
-                size += pad_size
-                if not self.block_base or ((addr + size) > self.block_base + self.page_size):
-                    block = self.get_valid_ranges(self.page_size)
-                    self.block_base, self.block_size = block
 
-                    self.emu_eng.mem_map(self.block_base, self.block_size)
-                    self.block_offset = 0
-                    addr = self.block_base + self.block_offset
+            self.block_offset += size
+            base = addr
 
-                self.block_offset += size
-                base = addr
+            mm = MemMap(base, size, tag, perms, flags, self.block_base, self.block_size,
+                        shared, process)
 
-                mm = MemMap(base, size, tag, perms, flags, self.block_base, self.block_size,
-                            shared, process)
-
-                self.maps.append(mm)
-                self._hook_mem_map_dispatch(mm)
-                return base
+            self.maps.append(mm)
+            self._hook_mem_map_dispatch(mm)
+            return base
 
         block = self.get_valid_ranges(size, addr=base)
         base, size = block
@@ -185,8 +185,7 @@ class MemoryManager(object):
         """
         Free a block of memory, if all blocks in a block are set to free, unmap the entire block
         """
-        mm = self.get_address_map(base)
-        if mm:
+        if mm := self.get_address_map(base):
             mm.set_free()
 
             # If we want to freeze memory, just return
@@ -195,7 +194,7 @@ class MemoryManager(object):
 
             ml = [m for m in self.get_mem_maps() if m.block_base == mm.block_base]
             # if all blocks are free in the current block, free it from the emu engine
-            if all([m.free for m in ml]):
+            if all(m.free for m in ml):
                 self.block_base = 0
                 self.mem_unmap(mm.block_base, mm.block_size)
                 [self.maps.remove(mm) for mm in ml]
@@ -223,7 +222,7 @@ class MemoryManager(object):
         self.mem_free(map.base)
 
         newmem = self.mem_map(size, base=to, perms=prot, tag=tag)
-        
+
         if newmem != to:
             return -1
 
@@ -283,9 +282,7 @@ class MemoryManager(object):
         """
         if self.get_address_map(address):
             return True
-        if self.get_reserve_map(address):
-            return True
-        return False
+        return bool(self.get_reserve_map(address))
 
     def get_address_tag(self, address):
         """
@@ -384,15 +381,12 @@ class MemoryManager(object):
             if len(diffs) == len(req):
                 break
 
-            if not attempts % 10:
-                base += (page_size * 1000)
-            else:
-                base += total
+            base += total if attempts % 10 else (page_size * 1000)
             attempts -= 1
 
         if attempts == 0:
             raise Exception('Failed to allocate emulator memory')
 
-        a = [r for r in get_runs(diffs)][0]
+        a = list(get_runs(diffs))[0]
 
         return (min(a), total)

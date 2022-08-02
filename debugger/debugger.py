@@ -41,10 +41,7 @@ class Breakpoint(object):
     _id = 0
 
     def __init__(self, address):
-        if isinstance(address, int):
-            self.address = address
-        else:
-            self.address = address.lower()
+        self.address = address if isinstance(address, int) else address.lower()
         self.id = Breakpoint._id
         Breakpoint._id += 1
 
@@ -61,10 +58,7 @@ class SpeakeasyDebugger(cmd.Cmd):
         self.is_sc = is_sc
         self.arch = arch
         self.logger = logger
-        if not se_inst:
-            self.se = speakeasy.Speakeasy(logger=self.logger)
-        else:
-            self.se = se_inst
+        self.se = se_inst or speakeasy.Speakeasy(logger=self.logger)
         self.loaded_modules = []
         self.loaded_shellcode = []
         self.targets = []
@@ -92,7 +86,7 @@ class SpeakeasyDebugger(cmd.Cmd):
         self.next_pc = 0
 
     def error(self, msg):
-        self.logger.error('[-] ' + msg)
+        self.logger.error(f'[-] {msg}')
 
     def info(self, msg):
         self.logger.info(msg)
@@ -110,11 +104,7 @@ class SpeakeasyDebugger(cmd.Cmd):
 
             offset = int.from_bytes(binascii.unhexlify(offset), 'big')
 
-            if address > 0xFFFFFFFF:
-                fmt = r'%016X'
-            else:
-                fmt = r'%08X'
-
+            fmt = r'%016X' if address > 0xFFFFFFFF else r'%08X'
             addr = fmt % (offset + address)
             output.append(addr + rest)
         return '\n'.join(output)
@@ -136,26 +126,25 @@ class SpeakeasyDebugger(cmd.Cmd):
         rv = func(params)
         addr = emu.get_ret_address()
 
-        bp = self.breakpoints.get(api_name.lower())
-        if bp:
+        if bp := self.breakpoints.get(api_name.lower()):
             self.info('\nBreakpoint %d hit for %s' % (bp.id, api_name))
             self.step = True
             return rv
 
         elif '.' in api_name:
             fn = api_name.split('.')[1]
-            bp = self.breakpoints.get(fn.lower())
-            if bp:
+            if bp := self.breakpoints.get(fn.lower()):
                 self.info('\nBreakpoint %d hit for %s' % (bp.id, api_name))
                 self.step = True
                 return rv
 
         for addr, bp in self.breakpoints.items():
-            if not isinstance(addr, int):
-                if fnmatch.fnmatch(api_name.lower(), addr.lower()):
-                    self.info('\nBreakpoint %d hit for %s' % (bp.id, api_name))
-                    self.step = True
-                    return rv
+            if not isinstance(addr, int) and fnmatch.fnmatch(
+                api_name.lower(), addr.lower()
+            ):
+                self.info('\nBreakpoint %d hit for %s' % (bp.id, api_name))
+                self.step = True
+                return rv
         return rv
 
     def code_hook(self, emu, addr, size, ctx):
@@ -169,8 +158,7 @@ class SpeakeasyDebugger(cmd.Cmd):
             return True
 
         if self.breakpoints:
-            bp = self.breakpoints.get(addr)
-            if bp:
+            if bp := self.breakpoints.get(addr):
                 self.log_disasm(addr, size)
                 self.info('\nBreakpoint %d hit for 0x%x' % (bp.id, addr))
                 self._break(addr)
@@ -198,15 +186,10 @@ class SpeakeasyDebugger(cmd.Cmd):
         '''
         # Was a register supplied? Read it.
         regs = self.se.get_all_registers()
-        val = regs.get(hstr.lower())
-        if val:
+        if val := regs.get(hstr.lower()):
             hstr = val
 
-        if hstr.startswith('0x'):
-            int_val = int(hstr, 16)
-        else:
-            int_val = int(hstr, 10)
-        return int_val
+        return int(hstr, 16) if hstr.startswith('0x') else int(hstr, 10)
 
     def dump_mem(self, address, length):
         '''
@@ -336,7 +319,7 @@ class SpeakeasyDebugger(cmd.Cmd):
             self.error('Invalid arguments')
             return
         except SpeakeasyError:
-            self.error('Failed to disassemble at address: %s' % (address))
+            self.error(f'Failed to disassemble at address: {address}')
             return
 
         for i in instrs:
@@ -364,7 +347,7 @@ class SpeakeasyDebugger(cmd.Cmd):
             elif arch in ('x64', 'amd64'):
                 arch = e_arch.ARCH_AMD64
             else:
-                raise Exception('Unsupported architecture: %s' % arch)
+                raise Exception(f'Unsupported architecture: {arch}')
 
         if not os.path.exists(sc_path):
             self.error('Can\'t find shellcode: %s' % (sc_path))
@@ -379,11 +362,11 @@ class SpeakeasyDebugger(cmd.Cmd):
         '''
         self.se = speakeasy.Speakeasy(logger=self.logger)
         if self.target:
-            if not self.is_sc:
+            if self.is_sc:
+                self.load_shellcode(self.target, self.arch)
+            else:
                 # Load the initial target module
                 self.load_module(self.target)
-            else:
-                self.load_shellcode(self.target, self.arch)
         self.init_state()
         self.do_run(None)
 
@@ -412,11 +395,10 @@ class SpeakeasyDebugger(cmd.Cmd):
         data = ''.join(split_args[1:])
 
         # Do some basic normalization
-        if data.startswith('0x'):
-            data = data[2:]
+        data = data.removeprefix('0x')
         data = data.replace(' ', '')
         if len(data) % 2:
-            data = '0' + data
+            data = f'0{data}'
 
         data = binascii.unhexlify(data)
         self.write_mem(address, data)
@@ -439,8 +421,7 @@ class SpeakeasyDebugger(cmd.Cmd):
         address = split_args[0]
         address = self.convert_bin_str(address)
 
-        decoy = self.se.emu.get_mod_from_addr(address)
-        if decoy:
+        if decoy := self.se.emu.get_mod_from_addr(address):
             self.se.emu.map_decoy(decoy)
 
         if len(split_args) == 1:
@@ -503,7 +484,7 @@ class SpeakeasyDebugger(cmd.Cmd):
         if not arg:
             o = ''
             for i, (r, v) in enumerate(regs.items()):
-                o += '%s=%s ' % (r, v)
+                o += f'{r}={v} '
                 if not ((i + 1) % 3):
                     o += '\n'
             self.info(o)
@@ -517,7 +498,7 @@ class SpeakeasyDebugger(cmd.Cmd):
                 return
             reg, val = reg_write
             if not regs.get(reg):
-                self.error('Invalid register: %s' % (reg))
+                self.error(f'Invalid register: {reg}')
                 return
             try:
                 int_val = self.convert_bin_str(val)
@@ -528,11 +509,10 @@ class SpeakeasyDebugger(cmd.Cmd):
                 self.se.reg_write(reg, int_val)
             return
 
-        val = regs.get(arg.lower())
-        if not val:
-            self.error('Invalid register: %s' % (arg))
+        if val := regs.get(arg.lower()):
+            self.info(f'{arg}={val}')
         else:
-            self.info('%s=%s' % (arg, val))
+            self.error(f'Invalid register: {arg}')
 
     def do_run(self, arg):
         '''Begin emulation of a loaded module'''
@@ -540,12 +520,11 @@ class SpeakeasyDebugger(cmd.Cmd):
             self.error('No modules have been loaded yet')
 
         if not self.running:
-            if not self.is_sc:
-                if len(self.loaded_modules) == 1:
-                    self.se.run_module(self.loaded_modules[0],
-                                       all_entrypoints=False)
-            else:
+            if self.is_sc:
                 self.se.run_shellcode(self.loaded_shellcode[0], 0)
+            elif len(self.loaded_modules) == 1:
+                self.se.run_module(self.loaded_modules[0],
+                                   all_entrypoints=False)
             self.running = True
         else:
             self.step = False
@@ -555,8 +534,8 @@ class SpeakeasyDebugger(cmd.Cmd):
         '''
         Step into an instruction
         '''
+        self.step = True
         if not self.running:
-            self.step = True
             self.running = True
             if not self.is_sc:
                 self.se.run_module(self.loaded_modules[0],
@@ -564,7 +543,6 @@ class SpeakeasyDebugger(cmd.Cmd):
             else:
                 self.se.run_shellcode(self.loaded_shellcode[0], 0)
         else:
-            self.step = True
             self.se.resume(self.next_pc, count=1)
 
     def do_stack(self, arg):
@@ -573,7 +551,7 @@ class SpeakeasyDebugger(cmd.Cmd):
         '''
         stack = self.se.emu.format_stack(16)
         ptr_size = self.se.emu.get_ptr_size()
-        ptr_fmt = '0x%0' + str(ptr_size * 2) + 'x'
+        ptr_fmt = f'0x%0{str(ptr_size * 2)}x'
         for loc in stack:
             sp, ptr, tag = loc
 

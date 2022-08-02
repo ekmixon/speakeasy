@@ -187,10 +187,7 @@ class Profiler(object):
         Log file access events. This will include things like handles being opened,
         data reads, and data writes.
         """
-        enc = None
-        if data:
-            enc = self.handle_binary_data(data[:1024])
-
+        enc = self.handle_binary_data(data[:1024]) if data else None
         for et in ('write', 'read'):
             if event_type == et:
                 for fa in run.file_access:
@@ -203,22 +200,22 @@ class Profiler(object):
 
         event = {'event': event_type, 'path': path}
         if enc:
-            event.update({'data': enc})
+            event['data'] = enc
 
         if handle:
-            event.update({'handle': handle})
+            event['handle'] = handle
 
         if size is not None:
-            event.update({'size': size})
+            event['size'] = size
 
         if buffer:
-            event.update({'buffer': hex(buffer)})
+            event['buffer'] = hex(buffer)
 
         if disposition:
-            event.update({'open_flags': disposition})
+            event['open_flags'] = disposition
 
         if access:
-            event.update({'access_flags': access})
+            event['access_flags'] = access
 
         if event not in run.file_access:
             run.file_access.append(event)
@@ -230,31 +227,28 @@ class Profiler(object):
         Log registry access events. This includes values and keys being accessed and
         being read/written
         """
-        enc = None
-        if data:
-            enc = self.handle_binary_data(data[:1024])
-
+        enc = self.handle_binary_data(data[:1024]) if data else None
         event = {'event': event_type, 'path': path}
         if enc:
-            event.update({'data': enc})
+            event['data'] = enc
 
         if handle:
-            event.update({'handle': hex(handle)})
+            event['handle'] = hex(handle)
 
         if value_name:
-            event.update({'value_name': value_name})
+            event['value_name'] = value_name
 
         if size is not None:
-            event.update({'size': size})
+            event['size'] = size
 
         if buffer:
-            event.update({'buffer': hex(buffer)})
+            event['buffer'] = hex(buffer)
 
         if disposition:
-            event.update({'open_flags': disposition})
+            event['open_flags'] = disposition
 
         if access:
-            event.update({'access_flags': access})
+            event['access_flags'] = access
 
         if event not in run.registry_access:
             run.registry_access.append(event)
@@ -267,21 +261,21 @@ class Profiler(object):
         """
         event = {}
         if event_type == PROC_CREATE:
-            event.update({'event': event_type})
-            event.update({'pid': proc.get_id()})
-            event.update({'path': proc.get_process_path()})
-            event.update({'cmdline': proc.get_command_line()})
+            event['event'] = event_type
+            event['pid'] = proc.get_id()
+            event['path'] = proc.get_process_path()
+            event['cmdline'] = proc.get_command_line()
 
         elif event_type == MEM_ALLOC:
-            event.update({'event': event_type})
-            event.update({'pid': proc.get_id()})
-            event.update({'path': proc.get_process_path()})
-            event.update(kwargs)
+            event['event'] = event_type
+            event['pid'] = proc.get_id()
+            event['path'] = proc.get_process_path()
+            event |= kwargs
 
         elif event_type == MEM_PROTECT:
-            event.update({'event': event_type})
-            event.update({'pid': proc.get_id()})
-            event.update({'path': proc.get_process_path()})
+            event['event'] = event_type
+            event['pid'] = proc.get_id()
+            event['path'] = proc.get_process_path()
             event.update(kwargs)
 
         elif event_type == MEM_WRITE:
@@ -295,13 +289,13 @@ class Profiler(object):
                 self.last_event['size'] += len(data)
                 self.last_data = [base, size]
                 return
-            event.update({'event': event_type})
-            event.update({'pid': proc.get_id()})
-            event.update({'path': proc.get_process_path()})
+            event['event'] = event_type
+            event['pid'] = proc.get_id()
+            event['path'] = proc.get_process_path()
             data = kwargs['data']
-            event.update({'data': data})
-            event.update({'base': base})
-            event.update({'size': size})
+            event['data'] = data
+            event['base'] = base
+            event['size'] = size
             self.last_data = [base, size]
 
         elif event_type == MEM_READ:
@@ -315,21 +309,21 @@ class Profiler(object):
                 self.last_event['size'] += len(data)
                 self.last_data = [base, size]
                 return
-            event.update({'event': event_type})
-            event.update({'pid': proc.get_id()})
-            event.update({'path': proc.get_process_path()})
+            event['event'] = event_type
+            event['pid'] = proc.get_id()
+            event['path'] = proc.get_process_path()
             data = kwargs['data']
-            event.update({'data': data})
-            event.update({'size': size})
-            event.update({'base': base})
+            event['data'] = data
+            event['size'] = size
+            event['base'] = base
             self.last_data = [base, size]
 
-        elif event_type == THREAD_INJECT or event_type == THREAD_CREATE:
-            event.update({'event': event_type})
-            event.update({'pid': proc.get_id()})
-            event.update({'path': proc.get_process_path()})
-            event.update({'start_addr': hex(kwargs['start_addr'])})
-            event.update({'param': hex(kwargs['param'])})
+        elif event_type in [THREAD_INJECT, THREAD_CREATE]:
+            event['event'] = event_type
+            event['pid'] = proc.get_id()
+            event['path'] = proc.get_process_path()
+            event['start_addr'] = hex(kwargs['start_addr'])
+            event['param'] = hex(kwargs['param'])
 
         run.process_events.append(event)
         self.last_event = event
@@ -350,15 +344,17 @@ class Profiler(object):
         """
         conns = run.network['traffic']
 
-        proto = 'http'
-        if secure:
-            proto = 'https'
+        proto = 'https' if secure else 'http'
+        http_conn = {
+            'server': server,
+            'proto': f'tcp.{proto}',
+            'port': port,
+            'headers': headers,
+        }
 
-        http_conn = {'server': server, 'proto': 'tcp.%s' % (proto), 'port': port,
-                     'headers': headers}
         if body:
             data = self.handle_binary_data(body[:0x3000])
-            http_conn.update({'body': data})
+            http_conn['body'] = data
 
         if http_conn not in conns:
             conns.append(http_conn)
@@ -382,12 +378,12 @@ class Profiler(object):
         conn = {'server': server, 'proto': proto, 'port': port}
         if data:
             data = self.handle_binary_data(data[:0x3000])
-            conn.update({'data': data})
+            conn['data'] = data
 
         if method:
-            conn.update({'method': method})
+            conn['method'] = method
 
-        conn.update({'type': typ})
+        conn['type'] = typ
 
         conns.append(conn)
 
@@ -414,11 +410,7 @@ class Profiler(object):
 
         for r in self.runs:
 
-            if r.ret_val is not None:
-                ret = hex(r.ret_val)
-            else:
-                ret = None
-
+            ret = hex(r.ret_val) if r.ret_val is not None else None
             args = []
             for a in r.args:
                 if isinstance(a, int):
@@ -432,29 +424,28 @@ class Profiler(object):
                   }
 
             if r.instr_cnt:
-                ep.update({'instr_count': r.instr_cnt})
+                ep['instr_count'] = r.instr_cnt
 
-            ep.update(
-                  {
-                   'apihash': r.api_hash.hexdigest(),
-                   'apis': r.apis,
-                   'ret_val': ret,
-                   'error': r.error
-                  }
-            )
+            ep |= {
+                'apihash': r.api_hash.hexdigest(),
+                'apis': r.apis,
+                'ret_val': ret,
+                'error': r.error,
+            }
+
 
             if r.handled_exceptions:
-                ep.update({"handled_exceptions": r.handled_exceptions})
+                ep["handled_exceptions"] = r.handled_exceptions
 
             if r.network and (r.network.get('dns', []) or
                               r.network.get('traffic', {})):
-                ep.update({'network_events': r.network})
+                ep['network_events'] = r.network
 
             if r.file_access:
-                ep.update({'file_access': r.file_access})
+                ep['file_access'] = r.file_access
 
             if r.registry_access:
-                ep.update({'registry_access': r.registry_access})
+                ep['registry_access'] = r.registry_access
 
             if r.process_events:
                 for evt in r.process_events:
@@ -462,39 +453,43 @@ class Profiler(object):
                         evt['data'] = self.handle_binary_data(evt['data'][:1024])
                     if evt.get('base'):
                         evt['base'] = hex(evt['base'])
-                ep.update({'process_events': r.process_events})
+                ep['process_events'] = r.process_events
 
             if r.mem_access:
-                mem_accesses = []
-                for mmap, maccess in r.mem_access.items():
-                    mem_accesses.append({'tag': mmap.get_tag(),
-                                         'base': hex(mmap.get_base()),
-                                         'reads': maccess.reads,
-                                         'writes': maccess.writes,
-                                         'execs': maccess.execs})
+                mem_accesses = [
+                    {
+                        'tag': mmap.get_tag(),
+                        'base': hex(mmap.get_base()),
+                        'reads': maccess.reads,
+                        'writes': maccess.writes,
+                        'execs': maccess.execs,
+                    }
+                    for mmap, maccess in r.mem_access.items()
+                ]
 
-                ep.update({'mem_access': mem_accesses})
+                ep['mem_access'] = mem_accesses
 
-                sym_accesses = []
-                for address, maccess in r.sym_access.items():
-                    sym_accesses.append({'symbol': maccess.sym,
-                                         'reads': maccess.reads,
-                                         'writes': maccess.writes,
-                                         'execs': maccess.execs})
-                if sym_accesses:
-                    ep.update({'sym_accesses': sym_accesses})
+                if sym_accesses := [
+                    {
+                        'symbol': maccess.sym,
+                        'reads': maccess.reads,
+                        'writes': maccess.writes,
+                        'execs': maccess.execs,
+                    }
+                    for address, maccess in r.sym_access.items()
+                ]:
+                    ep['sym_accesses'] = sym_accesses
 
             if r.dyn_code:
-                ep.update({'dynamic_code_segments': r.dyn_code['mmap']})
+                ep['dynamic_code_segments'] = r.dyn_code['mmap']
 
             exec_paths.append(ep)
 
             if r.dropped_files:
-                ep.update({'dropped_files': r.dropped_files})
+                ep['dropped_files'] = r.dropped_files
 
         if (self.strings['ansi'] or self.strings['unicode'] or
            self.decoded_strings['ansi'] or self.decoded_strings['unicode']):
            meta.update({'strings': {'static':self.strings, 'in_memory': self.decoded_strings}})  # noqa
-        profile = {**profile, **meta}
-        profile.update({'entry_points': exec_paths})
+        profile = {**profile, **meta, 'entry_points': exec_paths}
         return profile

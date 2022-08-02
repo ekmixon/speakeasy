@@ -132,9 +132,7 @@ class File(object):
             self.data.seek(offset, whence)
 
     def tell(self):
-        if self.data:
-            return self.data.tell()
-        return None
+        return self.data.tell() if self.data else None
 
     def add_data(self, data):
 
@@ -158,18 +156,13 @@ class File(object):
         to return from the read request
         """
 
-        path = self.config.get('path')
-        if path:
+        if path := self.config.get('path'):
             path = normalize_response_path(path)
             with open(path, 'rb') as f:
                 return io.BytesIO(f.read())
-        bf = self.config.get('byte_fill')
-        if bf:
+        if bf := self.config.get('byte_fill'):
             byte = bf.get('byte')
-            if byte.startswith('0x'):
-                byte = 0xFF & int(byte, 0)
-            else:
-                byte = 0xFF & int(byte, 16)
+            byte = 0xFF & int(byte, 0) if byte.startswith('0x') else 0xFF & int(byte, 16)
             size = bf.get('size')
             b = (byte).to_bytes(1, 'little')
             return b * size
@@ -227,21 +220,17 @@ class FileManager(object):
         if hfile not in (windefs.INVALID_HANDLE_VALUE, 0):
             f = self.get_file_from_handle(hfile)
             fm = FileMap(name, size, prot, f)
-            hnd = fm.get_handle()
-            self.file_maps.update({hnd: fm})
-            return hnd
         else:
             fm = FileMap(name, size, prot, None)
-            hnd = fm.get_handle()
-            self.file_maps.update({hnd: fm})
-            return hnd
+
+        hnd = fm.get_handle()
+        self.file_maps.update({hnd: fm})
+        return hnd
 
     def walk_files(self):
         for f in self.file_config.get('files', []):
-            path = f.get('emu_path')
-            if not path:
-                continue
-            yield path
+            if path := f.get('emu_path'):
+                yield path
 
     def get_dropped_files(self):
         return [f for f in self.files if f.bytes_written == f.get_size()]
@@ -267,28 +256,22 @@ class FileManager(object):
         if self.emulated_binname in path:
             return self.files[0]
 
-        for f in self.files:
-            if f.get_path().lower() == path.lower():
-                return f
-        return None
+        return next(
+            (f for f in self.files if f.get_path().lower() == path.lower()), None
+        )
 
     def get_all_files(self):
         return self.files
 
     def handle_file_data(self, fconf):
 
-        path = fconf.get('path')
-        if path:
+        if path := fconf.get('path'):
             path = normalize_response_path(path)
             with open(path, 'rb') as f:
                 return f.read()
-        bf = fconf.get('byte_fill')
-        if bf:
+        if bf := fconf.get('byte_fill'):
             byte = bf.get('byte')
-            if byte.startswith('0x'):
-                byte = 0xFF & int(byte, 0)
-            else:
-                byte = 0xFF & int(byte, 16)
+            byte = 0xFF & int(byte, 0) if byte.startswith('0x') else 0xFF & int(byte, 16)
             size = bf.get('size')
             b = (byte).to_bytes(1, 'little')
             return b * size
@@ -311,8 +294,7 @@ class FileManager(object):
         return f
 
     def delete_file(self, path):
-        f = self.get_file_from_path(path)
-        if f:
+        if f := self.get_file_from_path(path):
             self.files.remove(f)
             return True
         return False
@@ -322,9 +304,10 @@ class FileManager(object):
         # See if we have a handler for this exact file
         for f in self.file_config.get('files', []):
             mode = f.get('mode')
-            if mode == 'full_path':
-                if fnmatch.fnmatch(path.lower(), f.get('emu_path').lower()):
-                    return f
+            if mode == 'full_path' and fnmatch.fnmatch(
+                path.lower(), f.get('emu_path').lower()
+            ):
+                return f
 
         all_modules = self.config.get('modules')
 
@@ -338,24 +321,21 @@ class FileManager(object):
         # Check if we can load the contents of a decoy DLL
         for f in all_modules.get('user_modules', []):
             if f.get('path') == path:
-                newconf = dict()
-                newconf['path'] = os.path.join(decoy_dir, f.get('name') + ext)
+                newconf = {'path': os.path.join(decoy_dir, f.get('name') + ext)}
                 return newconf
 
         for f in all_modules.get('system_modules', []):
             if f.get('path') == path:
-                newconf = dict()
+                newconf = {}
                 newconf['path'] = os.path.join(decoy_dir, f.get('name') + ext)
                 return newconf
 
         # If no full path handler exists, do we have an extension handler?
         for f in self.file_config.get('files', []):
-            path_ext = ntpath.splitext(path)[-1:][0].strip('.')
-            if path_ext:
+            if path_ext := ntpath.splitext(path)[-1:][0].strip('.'):
                 mode = f.get('mode')
-                if mode == 'by_ext':
-                    if path_ext.lower() == f.get('ext'):
-                        return f
+                if mode == 'by_ext' and path_ext.lower() == f.get('ext'):
+                    return f
 
         # Finally, do we have a catch-all default handler?
         for f in self.file_config.get('files', []):
@@ -376,22 +356,14 @@ class FileManager(object):
         return hnd
 
     def does_file_exist(self, path):
-        if self.get_file_from_path(path):
-            return True
-
-        if self.get_emu_file(path):
-            return True
-        return False
+        return True if self.get_file_from_path(path) else bool(self.get_emu_file(path))
 
     def get_object_from_handle(self, handle):
-        obj = self.file_maps.get(handle)
-        if obj:
+        if obj := self.file_maps.get(handle):
             return obj
-        obj = self.pipe_handles.get(handle)
-        if obj:
+        if obj := self.pipe_handles.get(handle):
             return obj
-        obj = self.file_handles.get(handle)
-        if obj:
+        if obj := self.file_handles.get(handle):
             return obj
 
     def file_open(self, path, create=False, truncate=False, is_dir=False):
@@ -399,8 +371,6 @@ class FileManager(object):
 
         if create:
             f = self.create_file(path)
-            hnd = f.get_handle()
-            self.file_handles.update({hnd: f})
         else:
             f = self.get_file_from_path(path)
 
@@ -418,17 +388,10 @@ class FileManager(object):
 
             real_path = fconf.get('path', '')
             real_path = normalize_response_path(real_path)
-            if not truncate:
-                if real_path and not os.path.exists(real_path):
-                    raise FileSystemEmuError('File path not found: %s' % (real_path))
-                f = File(path, config=fconf)
-                self.files.append(f)
-            else:
-                if real_path and not os.path.exists(real_path):
-                    raise FileSystemEmuError('File path not found: %s' % (real_path))
-                f = File(path, config=fconf)
-                self.files.append(f)
-            hnd = f.get_handle()
-            self.file_handles.update({hnd: f})
-
+            if real_path and not os.path.exists(real_path):
+                raise FileSystemEmuError(f'File path not found: {real_path}')
+            f = File(path, config=fconf)
+            self.files.append(f)
+        hnd = f.get_handle()
+        self.file_handles.update({hnd: f})
         return hnd

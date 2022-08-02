@@ -60,22 +60,17 @@ class Ndis(api.ApiHandler):
         UINT NdisGetVersion();
         """
 
-        ndis_major = 5
         ndis_minor = 0
         osver = self.get_os_version()
         major, minor = osver['major'], osver['minor']
 
-        if major >= 6:
-            ndis_major = 6
-
+        ndis_major = 6 if major >= 6 else 5
         if major >= 10:
             ndis_minor = 0x51
         elif minor >= 1:
             ndis_minor = 1
 
-        out_ver = (ndis_major << 16) | ndis_minor
-
-        return out_ver
+        return (ndis_major << 16) | ndis_minor
 
     @apihook('NdisGetRoutineAddress', argc=1)
     def NdisGetRoutineAddress(self, emu, argv, ctx={}):
@@ -233,8 +228,7 @@ class Ndis(api.ApiHandler):
         go.DriverObject = drv
 
         total = size + self.sizeof(go)
-        ptr = self.mem_alloc(size=total,
-                             tag='api.struct.NDIS_GENERIC_OBJECT.%s' % (stag))
+        ptr = self.mem_alloc(size=total, tag=f'api.struct.NDIS_GENERIC_OBJECT.{stag}')
         self.mem_write(ptr, self.get_bytes(go))
 
         return ptr
@@ -255,7 +249,7 @@ class Ndis(api.ApiHandler):
         stag = self.convert_pool_tag(tag)
         argv[2] = stag
 
-        ptr = self.mem_alloc(size=size, tag='api.ndis_pool.%s' % (stag))
+        ptr = self.mem_alloc(size=size, tag=f'api.ndis_pool.{stag}')
         self.mem_write(va,
                        ptr.to_bytes(emu.get_ptr_size(), 'little'))
 

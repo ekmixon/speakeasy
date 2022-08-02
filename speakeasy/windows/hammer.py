@@ -20,7 +20,7 @@ _default_api_hammer_allowlist = [
 
 
 def _lowercase_set(tt):
-    return set([bb.lower() for bb in tt])
+    return {bb.lower() for bb in tt}
 
 
 class ApiHammer():

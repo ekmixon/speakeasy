@@ -64,12 +64,11 @@ class AdvApi32(api.ApiHandler):
             argv[0] = hkey_name
             if not hnd and not lpSubKey:
                 hnd = hKey
-        else:
-            key_obj = emu.regman.get_key_from_handle(hKey)
-            if not key_obj:
-                return windefs.ERROR_PATH_NOT_FOUND
+        elif key_obj := emu.regman.get_key_from_handle(hKey):
             hkey_name = key_obj.path
 
+        else:
+            return windefs.ERROR_PATH_NOT_FOUND
         cw = self.get_char_width(ctx)
         if lpSubKey:
             lpSubKey = self.read_mem_string(lpSubKey, cw)
@@ -156,8 +155,7 @@ class AdvApi32(api.ApiHandler):
             lpValueName = self.read_mem_string(lpValueName, cw)
             argv[1] = lpValueName
 
-        type_name = regdefs.get_value_type(lpType)
-        if type_name:
+        if type_name := regdefs.get_value_type(lpType):
             argv[3] = type_name
 
         length = 0
@@ -166,26 +164,19 @@ class AdvApi32(api.ApiHandler):
             length = int.from_bytes(length, 'little')
             argv[5] = length
 
-        key = self.reg_get_key(hKey)
-        if key:
-            val = key.get_value(lpValueName)
-            if val:
-                output = b''
+        if key := self.reg_get_key(hKey):
+            if val := key.get_value(lpValueName):
                 typ = val.get_type()
                 data = val.get_data()
-                if typ == 'REG_SZ':
-                    output = data.encode('utf-8')
-
+                output = data.encode('utf-8') if typ == 'REG_SZ' else b''
                 if lpcbData:
                     self.mem_write(lpcbData, len(output).to_bytes(4, 'little'))
 
                 if len(output) > length:
                     rv = windefs.ERROR_INSUFFICIENT_BUFFER
-                else:
-                    if lpData:
-                        self.mem_write(lpData, output)
+                elif lpData:
+                    self.mem_write(lpData, output)
 
-            # For now, return an empty buffer
             else:
                 output = b'\x00' * length
                 if lpData:
@@ -267,16 +258,12 @@ class AdvApi32(api.ApiHandler):
                 subkeys = self.reg_get_subkeys(key)
                 if (dwIndex + 1) > len(subkeys):
                     rv = windefs.ERROR_NO_MORE_ITEMS
-                else:
-                    if lpName:
-                        sk = subkeys[dwIndex]
-                        name = sk.get_path()
-                        if cw == 2:
-                            name = name.encode('utf-16le')
-                        else:
-                            name = name.encode('utf-8')
-                        self.mem_write(lpName, name)
-                        rv = windefs.ERROR_SUCCESS
+                elif lpName:
+                    sk = subkeys[dwIndex]
+                    name = sk.get_path()
+                    name = name.encode('utf-16le') if cw == 2 else name.encode('utf-8')
+                    self.mem_write(lpName, name)
+                    rv = windefs.ERROR_SUCCESS
             self.log_registry_access(key.get_path(), REG_LIST)
         return rv
 
@@ -331,12 +318,11 @@ class AdvApi32(api.ApiHandler):
         '''
 
         hKey, lpClass, lpcchClass, _, subkeys, max_subkey_len, max_class_len, \
-            values, max_value_name_len, max_value_len, sec_desc, last_write = argv
+                values, max_value_name_len, max_value_len, sec_desc, last_write = argv
 
         rv = windefs.ERROR_SUCCESS
 
-        hkey_name = regdefs.get_hkey_type(hKey)
-        if hkey_name:
+        if hkey_name := regdefs.get_hkey_type(hKey):
             argv[0] = hkey_name
 
         key = self.reg_get_key(hKey)
@@ -427,10 +413,7 @@ class AdvApi32(api.ApiHandler):
          phNewToken) = argv
         rv = 0
 
-        obj = self.get_object_from_handle(hExistingToken)
-
-        if obj:
-
+        if obj := self.get_object_from_handle(hExistingToken):
             new_token = emu.new_object(objman.Token)
             hnd_new_token = new_token.get_handle()
 
@@ -457,9 +440,7 @@ class AdvApi32(api.ApiHandler):
 
         handle, info_class, info, info_len = argv
 
-        rv = 1
-
-        return rv
+        return 1
 
     @apihook('StartServiceCtrlDispatcher', argc=1)
     def StartServiceCtrlDispatcher(self, emu, argv, ctx={}):
@@ -482,13 +463,13 @@ class AdvApi32(api.ApiHandler):
             # Get the service name
             if entry.lpServiceName != windefs.NULL:
                 name = self.read_mem_string(entry.lpServiceName, cw) # noqa
-                argv[0] += " {{ lpServiceName={}".format(name)
+                argv[0] += f" {{ lpServiceName={name}"
             else:
                 argv[0] += " { lpServiceName=NULL"
             # Get the ServiceMain function
             if entry.lpServiceProc != windefs.NULL:
                 service_main = entry.lpServiceProc
-                argv[0] += ", lpServiceProc={} }} ".format(hex(service_main))
+                argv[0] += f", lpServiceProc={hex(service_main)} }} "
                 handle, obj = self.create_thread(service_main, windefs.NULL,
                                                  emu.get_current_process())
             else:
@@ -500,10 +481,9 @@ class AdvApi32(api.ApiHandler):
 
         argv[0] += "]"
 
-        rv = True
         emu.set_last_error(windefs.ERROR_SUCCESS)
 
-        return rv
+        return True
 
     @apihook('RegisterServiceCtrlHandler', argc=2)
     def RegisterServiceCtrlHandler(self, emu, argv, ctx={}):
@@ -622,11 +602,9 @@ class AdvApi32(api.ApiHandler):
         '''
         hService, dwNumServiceArgs, lpServiceArgVectors = argv
 
-        rv = 1
-
         emu.set_last_error(windefs.ERROR_SUCCESS)
 
-        return rv
+        return 1
 
     @apihook('CloseServiceHandle', argc=1)
     def CloseServiceHandle(self, emu, argv, ctx={}):
@@ -639,11 +617,9 @@ class AdvApi32(api.ApiHandler):
 
         self.mem_free(CloseServiceHandle)
 
-        rv = 1
-
         emu.set_last_error(windefs.ERROR_SUCCESS)
 
-        return rv
+        return 1
 
     @apihook('ChangeServiceConfig2', argc=3)
     def ChangeServiceConfig2(self, emu, argv, ctx={}):
@@ -656,11 +632,9 @@ class AdvApi32(api.ApiHandler):
         '''
         hService, dwInfoLevel, lpInfo = argv
 
-        rv = 1
-
         emu.set_last_error(windefs.ERROR_SUCCESS)
 
-        return rv
+        return 1
 
     @apihook('SystemFunction036', argc=2)
     def RtlGenRandom(self, emu, argv, ctx={}):
@@ -674,7 +648,7 @@ class AdvApi32(api.ApiHandler):
 
         rv = False
         if RandomBuffer and RandomBufferLength:
-            buf = bytes([i for i in range(RandomBufferLength)])
+            buf = bytes(list(range(RandomBufferLength)))
             self.mem_write(RandomBuffer, buf)
             rv = True
 
@@ -786,8 +760,8 @@ class AdvApi32(api.ApiHandler):
         pSid,  = argv
         rv = pSid
 
-        if pSid:
-            self.mem_free(pSid)
+        if rv:
+            self.mem_free(rv)
             rv = 0
         return rv
 
@@ -800,12 +774,10 @@ class AdvApi32(api.ApiHandler):
         );
         '''
         hProv, dwFlags = argv
-        rv = True
-
         cm = emu.get_crypt_manager()
         cm.crypt_close(hProv)
 
-        return rv
+        return True
 
     @apihook('GetUserName', argc=2)
     def GetUserName(self, emu, argv, ctx={}):
@@ -870,9 +842,7 @@ class AdvApi32(api.ApiHandler):
             PDWORD            ReturnLength
         );
         '''
-        rv = True
-
-        return rv
+        return True
 
     @apihook('GetTokenInformation', argc=5)
     def GetTokenInformation(self, emu, argv, ctx={}):
@@ -927,12 +897,7 @@ class AdvApi32(api.ApiHandler):
         );
         '''
         sid, = argv
-        rv = 0
-
-        if sid:
-            rv = sid + 1
-
-        return rv
+        return sid + 1 if sid else 0
 
     @apihook('LookupAccountSid', argc=7)
     def LookupAccountSid(self, emu, argv, ctx={}):
@@ -948,12 +913,10 @@ class AdvApi32(api.ApiHandler):
         );
         '''
         sysname, sid, name, cchname, domname, cchdomname, peuse = argv
-        rv = False
-
         cw = self.get_char_width(ctx)
 
         if not cchname or not cchdomname:
-            return rv
+            return False
 
         name_size = self.mem_read(cchname, 4)
         name_size = int.from_bytes(name_size, 'little')
@@ -963,13 +926,11 @@ class AdvApi32(api.ApiHandler):
 
         self.write_mem_string('myuser', name, cw)
         self.write_mem_string('mydomain', domname, cw)
-        rv = True
-
         if sysname:
             sn = self.read_mem_string(sysname, cw)
             argv[0] = sn
 
-        return rv
+        return True
 
     @apihook('CreateProcessAsUser', argc=11, conv=_arch.CALL_CONV_STDCALL)
     def CreateProcessAsUser(self, emu, argv, ctx={}):
@@ -1017,10 +978,8 @@ class AdvApi32(api.ApiHandler):
 
         self.mem_write(ppi, self.get_bytes(data))
 
-        rv = 1
-
         self.log_process_event(proc, PROC_CREATE)
-        return rv
+        return 1
 
     @apihook('CryptCreateHash', argc=5)
     def CryptCreateHash(self, emu, argv, ctx={}):
@@ -1101,7 +1060,7 @@ class AdvApi32(api.ApiHandler):
             5: "HP_HMAC_INFO"
         }
 
-        if dwParam in param_enums.keys():
+        if dwParam in param_enums:
             argv[1] = param_enums[dwParam]
 
         return 1
@@ -1236,8 +1195,7 @@ class AdvApi32(api.ApiHandler):
             lpValue = self.read_mem_string(lpValue, cw)
             argv[2] = lpValue
 
-        type_name = regdefs.get_value_type(lpType)
-        if type_name:
+        if type_name := regdefs.get_value_type(lpType):
             argv[4] = type_name
 
         length = 0
@@ -1245,10 +1203,8 @@ class AdvApi32(api.ApiHandler):
             length = self.mem_read(lpcbData, 4)
             length = int.from_bytes(length, 'little')
 
-        key = self.reg_get_key(hKey)
-        if key:
-            val = key.get_value(lpValue)
-            if val:
+        if key := self.reg_get_key(hKey):
+            if val := key.get_value(lpValue):
                 output = b''
 
                 if lpcbData:
@@ -1259,7 +1215,6 @@ class AdvApi32(api.ApiHandler):
                 else:
                     self.mem_write(lpData, output)
 
-            # For now, return an empty buffer
             else:
                 output = b'\x00' * length
                 self.mem_write(lpData, output)
@@ -1286,14 +1241,12 @@ class AdvApi32(api.ApiHandler):
         );
         '''
         hSCManager, dwServiceType, dwServiceState, lpServices, cbBufSize, \
-            pcbBytesNeeded, lpServicesReturned, lpResumeHandle = argv
+                pcbBytesNeeded, lpServicesReturned, lpResumeHandle = argv
 
-        service_type_str = adv32.get_define_int(dwServiceType, 'SERVICE_')
-        if service_type_str:
+        if service_type_str := adv32.get_define_int(dwServiceType, 'SERVICE_'):
             argv[1] = service_type_str
 
-        service_state_str = adv32.get_define_int(dwServiceState, 'SERVICE_')
-        if service_state_str:
+        if service_state_str := adv32.get_define_int(dwServiceState, 'SERVICE_'):
             argv[2] = service_state_str
 
         # TODO: Populate service status output

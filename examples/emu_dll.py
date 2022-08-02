@@ -32,7 +32,7 @@ def hook_messagebox(emu, api_name, func, params):
 
     hWnd, lpText, lpCaption, uType = params
 
-    msg = '%s text: %s' % (api_name, lpText)
+    msg = f'{api_name} text: {lpText}'
     logger.log(logging.INFO, msg)
 
     # Lets read where the stack pointer is

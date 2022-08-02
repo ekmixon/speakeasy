@@ -24,8 +24,7 @@ class OleAut32(api.ApiHandler):
         );
         """
         psz, = argv
-        alloc_str = self.read_mem_string(psz, 2)
-        if alloc_str:
+        if alloc_str := self.read_mem_string(psz, 2):
             argv[0] = alloc_str
             alloc_str += '\x00'
             ws = alloc_str.encode('utf-16le')

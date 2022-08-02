@@ -25,14 +25,14 @@ class UsbEmu(speakeasy.Speakeasy):
         self.ddesc = usbdefs.USB_DEVICE_DESCRIPTOR()
         self.cdesc = usbdefs.USB_CONFIGURATION_DESCRIPTOR()
         self.idesc = usbdefs.USB_INTERFACE_DESCRIPTOR()
-        self.endpoints = [usbdefs.USB_ENDPOINT_DESCRIPTOR() for i in range(3)]
+        self.endpoints = [usbdefs.USB_ENDPOINT_DESCRIPTOR() for _ in range(3)]
 
         self.pEvtIoRead = 0
         self.pEvtIoWrite = 0
 
     def init_usb_descriptors(self):
 
-        for i, ep in enumerate(self.endpoints):
+        for ep in self.endpoints:
             ep.bLength = 7
             ep.bDescriptorType = 5
 
@@ -87,9 +87,7 @@ class UsbEmu(speakeasy.Speakeasy):
         config = self.mem_cast(wdf.WDF_DRIVER_CONFIG(emu.get_ptr_size()), DriverConfig)
         self.device_add_func = config.EvtDriverDeviceAdd
 
-        rv = func(params)
-
-        return rv
+        return func(params)
 
     def wdf_device_set_pnp_hooks(self, emu, api_name, func, params):
         DriverGlobals, DeviceInit, PnpPowerEventCallbacks = params
@@ -138,8 +136,7 @@ class UsbEmu(speakeasy.Speakeasy):
         info.Traits |= wdf.WDF_USB_DEVICE_TRAIT_AT_HIGH_SPEED
         self.mem_write(Information, info.get_bytes())
 
-        rv = func(params)
-        return rv
+        return func(params)
 
     def wdf_queue_create_hook(self, emu, api_name, func, params):
         DriverGlobals, Device, Config, QueueAttributes, Queue = params
@@ -172,12 +169,11 @@ class UsbEmu(speakeasy.Speakeasy):
         if IOCTL_IS_SUPER_SPEED_SUPPORTED == csl.Parameters.DeviceIoControl.IoControlCode:
             rv = ddk.STATUS_NOT_SUPPORTED
             _irp.IoStatus.Status = rv
-            self.mem_write(pIrp, _irp.get_bytes())
         else:
             # Call the API handler
             rv = func(params)
             _irp.IoStatus.Status = 0
-            self.mem_write(pIrp, _irp.get_bytes())
+        self.mem_write(pIrp, _irp.get_bytes())
         return rv
 
 

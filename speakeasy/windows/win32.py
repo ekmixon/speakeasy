@@ -108,8 +108,7 @@ class Win32Emulator(WindowsEmulator):
             self.add_object(p)
 
             p.name = proc.get('name', '')
-            new_pid = proc.get('pid')
-            if new_pid:
+            if new_pid := proc.get('pid'):
                 p.pid = new_pid
 
             base = proc.get('base_addr')
@@ -208,11 +207,6 @@ class Win32Emulator(WindowsEmulator):
                 new_parent_mem, unused = self.get_valid_ranges(parent_map.size)
                 new_parent_mem = self.mem_remap(imgbase, new_parent_mem)
 
-                # Failed
-                if new_parent_mem == -1:
-                    # XXX what to do here
-                    pass
-
                 # Update parent module pointer
                 for pe_, ranges_, emu_path_ in self.modules:
                     base_, size_ = ranges_
@@ -226,13 +220,7 @@ class Win32Emulator(WindowsEmulator):
                 ranges = self.get_valid_ranges(pe.image_size, addr=imgbase)
                 base, size = ranges
 
-                if base != imgbase:
-                    # Out of luck
-                    # XXX what to do here
-                    pass
-
-        self.mem_map(pe.image_size, base=base,
-                tag='emu.module.%s' % (self.mod_name))
+        self.mem_map(pe.image_size, base=base, tag=f'emu.module.{self.mod_name}')
 
         self.modules.append((pe, ranges, emu_path))
         self.mem_write(pe.base, pe.mapped_image)
@@ -249,7 +237,7 @@ class Win32Emulator(WindowsEmulator):
             mod, eh = self.api.get_data_export_handler(mn, fn)
             if eh:
                 data_ptr = self.handle_import_data(mn, fn)
-                sym = "%s.%s" % (mn, fn)
+                sym = f"{mn}.{fn}"
                 self.global_data.update({addr: [sym, data_ptr]})
                 self.mem_write(addr, data_ptr.to_bytes(self.get_ptr_size(),
                                                        'little'))
@@ -280,8 +268,7 @@ class Win32Emulator(WindowsEmulator):
         if not module.is_exe():
             run.args = [module.base, DLL_PROCESS_ATTACH, 0]
             run.type = 'dll_entry.DLL_PROCESS_ATTACH'
-            container = self.init_container_process()
-            if container:
+            if container := self.init_container_process():
                 self.processes.append(container)
                 self.curr_process = container
         else:
@@ -295,23 +282,14 @@ class Win32Emulator(WindowsEmulator):
         self.add_run(run)
 
         if all_entrypoints:
-            # Only emulate a subset of all the exported functions
-            # There are some modules (such as the windows kernel) with
-            # thousands of exports
-            exports = [k for k in module.get_exports()[: MAX_EXPORTS_TO_EMULATE]]
-
-            if exports:
+            if exports := list(module.get_exports()[:MAX_EXPORTS_TO_EMULATE]):
                 args = [self.mem_map(8, tag='emu.export_arg_%d' % (i), base=0x41420000) for i in range(4)] # noqa
                 for exp in exports:
                     if exp.name in ('DllMain', ):
                         continue
                     run = Run()
-                    if exp.name:
-                        fn = exp.name
-                    else:
-                        fn = 'no_name'
-
-                    run.type = 'export.%s' % (fn)
+                    fn = exp.name or 'no_name'
+                    run.type = f'export.{fn}'
                     run.start_addr = exp.address
                     if exp.name == 'ServiceMain':
                         # ServiceMain accepts a (argc, argv) pair like main().
@@ -364,8 +342,7 @@ class Win32Emulator(WindowsEmulator):
                                pe=module, cmdline=self.command_line)
             self.curr_process = p
             self.om.objects.update({p.address: p})
-            mm = self.get_address_map(module.base)
-            if mm:
+            if mm := self.get_address_map(module.base):
                 mm.process = self.curr_process
 
         t = objman.Thread(self,
@@ -459,7 +436,7 @@ class Win32Emulator(WindowsEmulator):
         elif self.arch == _arch.ARCH_AMD64:
             disasm_mode = cs.CS_MODE_64
         else:
-            raise Win32EmuError('Unsupported architecture: %s' % self.arch)
+            raise Win32EmuError(f'Unsupported architecture: {self.arch}')
 
         self.emu_eng.init_engine(_arch.ARCH_X86, self.arch)
 
@@ -467,7 +444,7 @@ class Win32Emulator(WindowsEmulator):
         if not self.disasm_eng:
             self.disasm_eng = cs.Cs(cs.CS_ARCH_X86, disasm_mode)
 
-        sc_tag = 'emu.shellcode.%s' % (sc_hash)
+        sc_tag = f'emu.shellcode.{sc_hash}'
 
         # Map the shellcode into memory
         sc_addr = self.mem_map(len(sc), tag=sc_tag)
@@ -500,11 +477,14 @@ class Win32Emulator(WindowsEmulator):
         Begin emulating position independent code (i.e. shellcode) to prepare for emulation
         """
 
-        target = None
-        for sc_path, _sc_addr, size in self.pic_buffers:
-            if _sc_addr == sc_addr:
-                target = _sc_addr
-                break
+        target = next(
+            (
+                _sc_addr
+                for sc_path, _sc_addr, size in self.pic_buffers
+                if _sc_addr == sc_addr
+            ),
+            None,
+        )
 
         if not target:
             raise Win32EmuError('Invalid shellcode address')
@@ -526,10 +506,7 @@ class Win32Emulator(WindowsEmulator):
 
         self.add_run(run)
 
-        # Create an empty process object for the shellcode if none is
-        # supplied
-        container = self.init_container_process()
-        if container:
+        if container := self.init_container_process():
             self.processes.append(container)
             self.curr_process = container
         else:
@@ -537,8 +514,7 @@ class Win32Emulator(WindowsEmulator):
             self.processes.append(p)
             self.curr_process = p
 
-        mm = self.get_address_map(sc_addr)
-        if mm:
+        if mm := self.get_address_map(sc_addr):
             mm.set_process(self.curr_process)
 
         t = objman.Thread(self,
@@ -621,8 +597,7 @@ class Win32Emulator(WindowsEmulator):
             mod.decoy_base = base
             mod.decoy_path = modconf['path']
 
-            drv = modconf.get('driver')
-            if drv:
+            if drv := modconf.get('driver'):
                 devs = drv.get('devices')
                 for dev in devs:
                     name = dev.get('name', '')
@@ -645,9 +620,10 @@ class Win32Emulator(WindowsEmulator):
                     base = int(base, 0)
                 cmd_line = p.get('command_line', '')
 
-                proc = objman.Process(self, name=name,
-                                      path=emu_path, base=base, cmdline=cmd_line)
-                return proc
+                return objman.Process(
+                    self, name=name, path=emu_path, base=base, cmdline=cmd_line
+                )
+
         return None
 
     def get_user_modules(self):
@@ -656,15 +632,14 @@ class Win32Emulator(WindowsEmulator):
         """
         # Generate the decoy user module list
         if len(self.user_modules) < 2:
-            # Check if we have a host process configured
-            proc_mod = None
-            for p in self.config_processes:
-
-                if not self.user_modules and p.get('is_main_exe'):
-                    proc_mod = p
-                    break
-
-            if proc_mod:
+            if proc_mod := next(
+                (
+                    p
+                    for p in self.config_processes
+                    if not self.user_modules and p.get('is_main_exe')
+                ),
+                None,
+            ):
                 all_user_mods = [proc_mod] + self.config_user_modules
                 user_modules = self.init_user_modules(all_user_mods)
             else:
@@ -749,6 +724,6 @@ class Win32Emulator(WindowsEmulator):
         """
         Allocate a memory chunk and add it to the "heap"
         """
-        addr = self.mem_map(size, base=None, tag='api.heap.%s' % (heap))
+        addr = self.mem_map(size, base=None, tag=f'api.heap.{heap}')
         self.heap_allocs.append((addr, size, heap))
         return addr

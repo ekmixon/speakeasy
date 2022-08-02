@@ -24,7 +24,7 @@ class PtrMeta(type):
     Metaclass for pointer types
     """
     def __mul__(self, mult):
-        return tuple((self, mult))
+        return self, mult
 
 
 class Ptr(object, metaclass=PtrMeta):
@@ -42,24 +42,24 @@ class CMeta(type):
     """
 
     @classmethod
-    def __prepare__(self, name, bases):
+    def __prepare__(cls, name, bases):
         # This is default behavior for Python 3.6+ but lets do this anyway
         # to make sure __dict__ is ordered on older versions
         return OrderedDict()
 
-    def __new__(self, name, bases, classdict):
+    def __new__(cls, name, bases, classdict):
         classdict['__ordered__'] = [k for k in classdict.keys()
                                     if k not in ('__module__', '__qualname__')]
-        return type.__new__(self, name, bases, classdict)
+        return type.__new__(cls, name, bases, classdict)
 
-    def __call__(cls, *args, **kwargs):
+    def __call__(self, *args, **kwargs):
 
-        obj = type.__call__(cls, *args, **kwargs)
+        obj = type.__call__(self, *args, **kwargs)
         obj.create_struct()
         return obj
 
     def __mul__(self, mult):
-        return tuple((self, mult))
+        return self, mult
 
 
 class EmuStruct(object, metaclass=CMeta):
@@ -92,7 +92,7 @@ class EmuStruct(object, metaclass=CMeta):
         Test whether the object has a ctype base
         """
         tests = (ct._SimpleCData, ct.Structure, ct.Union, ct.Array)
-        return any([issubclass(obj, t) for t in tests])
+        return any(issubclass(obj, t) for t in tests)
 
     def create_struct(self, types={}):
         """
@@ -112,11 +112,11 @@ class EmuStruct(object, metaclass=CMeta):
 
                         try:
                             tmp = _type(self.__ptrsize__, self.__pack__)
-                            array = [_type(self.__ptrsize__, self.__pack__) for i in range(count)]
+                            array = [_type(self.__ptrsize__, self.__pack__) for _ in range(count)]
                         except TypeError:
                             try:
                                 tmp = _type(self.__ptrsize__)
-                                array = [_type(self.__ptrsize__) for i in range(count)]
+                                array = [_type(self.__ptrsize__) for _ in range(count)]
                             except TypeError as e:
                                 raise EmuStructException(str(e))
 
@@ -179,10 +179,7 @@ class EmuStruct(object, metaclass=CMeta):
         if self.__pack__:
             return self.__pack__
         else:
-            if self.__ptrsize__:
-                return self.__ptrsize__ * 2
-            else:
-                return 1
+            return self.__ptrsize__ * 2 if self.__ptrsize__ else 1
 
     def _link_cstructs(self, obj):
         """
@@ -225,8 +222,7 @@ class EmuStruct(object, metaclass=CMeta):
 
         obj.__struct__ = type(obj.__struct__).from_buffer(bytearray(bytez[offset[0]:]))
         for fn, c in obj.__fields__:
-            subobj = obj.__filtermap__.get(fn)
-            if subobj:
+            if subobj := obj.__filtermap__.get(fn):
                 if isinstance(subobj, list):
                     for sso in subobj:
                         self._deep_cast(sso, bytez, offset)
@@ -254,7 +250,7 @@ class EmuStruct(object, metaclass=CMeta):
                 return name
             elif noff < offset < noff + nsize:
                 # access into the sub-structure recursively
-                return name + '.' + self.get_sub_field_name(t, offset - noff)
+                return f'{name}.{self.get_sub_field_name(t, offset - noff)}'
 
     def get_field_name(self, offset):
         cstruc = self.get_cstruct()
@@ -265,14 +261,14 @@ class EmuStruct(object, metaclass=CMeta):
                 return name
             elif noff < offset < noff + nsize:
                 # access into the sub-structure
-                return name + '.' + self.get_sub_field_name(t, offset - noff)
+                return f'{name}.{self.get_sub_field_name(t, offset - noff)}'
         return None
 
     def __struct_factory(self, name):
         """
         Factory used to generate ctypes structures using the ctypes metaclass
         """
-        _type_name = 'ct' + name + '%d' % (self.__ptrsize__)
+        _type_name = f'ct{name}' + '%d' % (self.__ptrsize__)
         _type = EmuStruct.__types__.get(_type_name)
         if not _type:
             _type = type(_type_name, (self.__class__.FilteredStruct, ),
@@ -289,8 +285,7 @@ class EmuStruct(object, metaclass=CMeta):
         Hook setattr so that accessing the underlying ctypes structure can be
         handled correctly
         """
-        struct = self.__struct__
-        if struct:
+        if struct := self.__struct__:
             fields = struct._fields_
             for fn, val in fields:
                 if fn == name:
@@ -308,18 +303,16 @@ class EmuStruct(object, metaclass=CMeta):
         can be handled correctly
         """
         try:
-            struct = super(EmuStruct, self).__getattribute__('__struct__')
-            if struct:
+            if struct := super(EmuStruct, self).__getattribute__('__struct__'):
                 fields = struct._fields_
                 for fn, val in fields:
                     if fn == name:
                         val = struct.__getattribute__(name)
                         tests = (EmuStruct.FilteredStruct, EmuUnion.FilteredStruct, ct.Array)
-                        if any([isinstance(val, t) for t in tests]):
+                        if any(isinstance(val, t) for t in tests):
                             fm = super(EmuStruct,
                                        self).__getattribute__('__filtermap__')
-                            filt_obj = fm.get(name)
-                            if filt_obj:
+                            if filt_obj := fm.get(name):
                                 return filt_obj
 
                         return struct.__getattribute__(name)

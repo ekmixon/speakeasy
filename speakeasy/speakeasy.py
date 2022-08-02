@@ -101,7 +101,7 @@ class Speakeasy(object):
             # Get the machine type we only support x86/x64 atm
             mach = MACHINE_TYPE[pe.FILE_HEADER.Machine].split('_')[-1:][0].lower()
             if mach not in ('amd64', 'i386'):
-                raise SpeakeasyError('Unsupported architecture: %s' % mach)
+                raise SpeakeasyError(f'Unsupported architecture: {mach}')
 
             if pe.is_dotnet():
                 raise NotSupportedError('.NET assemblies are not currently supported')
@@ -182,10 +182,7 @@ class Speakeasy(object):
             True is data appears to be a PE
         """
         # Check for the PE header
-        if data[:2] == b'MZ':
-            return True
-        else:
-            return False
+        return data[:2] == b'MZ'
 
     def load_module(self, path=None, data=None) -> PeFile:
         """
@@ -201,7 +198,7 @@ class Speakeasy(object):
             raise SpeakeasyError('No emulation target supplied')
 
         if path and not os.path.exists(path):
-            raise SpeakeasyError('Target file not found: %s' % (path))
+            raise SpeakeasyError(f'Target file not found: {path}')
 
         if data:
             test = data
@@ -890,17 +887,12 @@ class Speakeasy(object):
             for process in procs:
                 memory_blocks = []
                 arch = self.emu.get_arch()
-                if arch == _arch.ARCH_X86:
-                    arch = 'x86'
-                else:
-                    arch = 'amd64'
-
-                if process:
-                    pid = process.get_pid()
-                    path = process.get_process_path()
-                else:
+                arch = 'x86' if arch == _arch.ARCH_X86 else 'amd64'
+                if not process:
                     continue
 
+                pid = process.get_pid()
+                path = process.get_process_path()
                 manifest.append({'pid': pid, 'process_name': path, 'arch': arch,
                                  'memory_blocks': memory_blocks})
                 for block in self.get_memory_dumps():
@@ -922,7 +914,7 @@ class Speakeasy(object):
                     h.update(data)
                     _hash = h.hexdigest()
 
-                    file_name = '%s.mem' % (tag)
+                    file_name = f'{tag}.mem'
 
                     memory_blocks.append({'tag':  tag, 'base': hex(base), 'size': hex(size),
                                           'is_free': is_free, 'sha256': _hash,

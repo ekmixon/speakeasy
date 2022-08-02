@@ -30,8 +30,7 @@ class Secur32(api.ApiHandler):
 
         cw = self.get_char_width(ctx)
 
-        name_format = sec32defs.get_define(NameFormat, prefix='Name')
-        if name_format:
+        if name_format := sec32defs.get_define(NameFormat, prefix='Name'):
             argv[0] = name_format
 
         user = emu.get_user()

@@ -34,37 +34,34 @@ class WskSocket(objman.KernelObject):
         self.dispatch_ptr = 0
         self.types = api.win
 
-        # TODO: support other wsk socket types
-        if flags == WSK_FLAG_DATAGRAM_SOCKET:
-            self.dispatch = self.types.WSK_PROVIDER_DATAGRAM_DISPATCH(self.emu.get_ptr_size())
-            self.dispatch_ptr = \
-                self.emu.mem_map(size=self.sizeof(self.dispatch) +
-                                 self.emu.get_ptr_size(),
-                                 tag='api.struct.WSK_PROVIDER_DATAGRAM_DISPATCH') # noqa
-
-            # We need a ptr to the dispatch table ptr
-            self.dispatch_addr = self.dispatch_ptr + self.emu.get_ptr_size()
-            self.emu.mem_write(self.dispatch_ptr, self.dispatch_addr.to_bytes(self.emu.get_ptr_size(), 'little')) # noqa
-
-            addr = self.emu.add_callback(Netio.name, api.WskControlSocket.__apihook__[0]) # noqa
-            self.dispatch.Basic.WskControlSocket = addr
-            addr = self.emu.add_callback(Netio.name, api.WskCloseSocket.__apihook__[0]) # noqa
-            self.dispatch.Basic.WskCloseSocket = addr
-            addr = self.emu.add_callback(Netio.name, api.WskBind.__apihook__[0]) # noqa
-            self.dispatch.WskBind = addr
-            addr = self.emu.add_callback(Netio.name, api.WskSendTo.__apihook__[0]) # noqa
-            self.dispatch.WskSendTo = addr
-            addr = self.emu.add_callback(Netio.name, api.WskReceiveFrom.__apihook__[0]) # noqa
-            self.dispatch.WskReceiveFrom = addr
-            addr = self.emu.add_callback(Netio.name, api.WskRelease.__apihook__[0]) # noqa
-            self.dispatch.WskRelease = addr
-            addr = self.emu.add_callback(Netio.name, api.WskGetLocalAddress.__apihook__[0]) # noqa
-            self.dispatch.WskGetLocalAddress = addr
-
-            self.emu.mem_write(self.dispatch_addr, self.get_bytes(self.dispatch))
-
-        else:
+        if flags != WSK_FLAG_DATAGRAM_SOCKET:
             raise ApiEmuError('Unsupported WSK socket type: 0x%x' % (flags))
+        self.dispatch = self.types.WSK_PROVIDER_DATAGRAM_DISPATCH(self.emu.get_ptr_size())
+        self.dispatch_ptr = \
+                self.emu.mem_map(size=self.sizeof(self.dispatch) +
+                             self.emu.get_ptr_size(),
+                             tag='api.struct.WSK_PROVIDER_DATAGRAM_DISPATCH') # noqa
+
+        # We need a ptr to the dispatch table ptr
+        self.dispatch_addr = self.dispatch_ptr + self.emu.get_ptr_size()
+        self.emu.mem_write(self.dispatch_ptr, self.dispatch_addr.to_bytes(self.emu.get_ptr_size(), 'little')) # noqa
+
+        addr = self.emu.add_callback(Netio.name, api.WskControlSocket.__apihook__[0]) # noqa
+        self.dispatch.Basic.WskControlSocket = addr
+        addr = self.emu.add_callback(Netio.name, api.WskCloseSocket.__apihook__[0]) # noqa
+        self.dispatch.Basic.WskCloseSocket = addr
+        addr = self.emu.add_callback(Netio.name, api.WskBind.__apihook__[0]) # noqa
+        self.dispatch.WskBind = addr
+        addr = self.emu.add_callback(Netio.name, api.WskSendTo.__apihook__[0]) # noqa
+        self.dispatch.WskSendTo = addr
+        addr = self.emu.add_callback(Netio.name, api.WskReceiveFrom.__apihook__[0]) # noqa
+        self.dispatch.WskReceiveFrom = addr
+        addr = self.emu.add_callback(Netio.name, api.WskRelease.__apihook__[0]) # noqa
+        self.dispatch.WskRelease = addr
+        addr = self.emu.add_callback(Netio.name, api.WskGetLocalAddress.__apihook__[0]) # noqa
+        self.dispatch.WskGetLocalAddress = addr
+
+        self.emu.mem_write(self.dispatch_addr, self.get_bytes(self.dispatch))
 
     def get_dispatch_ptr(self):
         return self.dispatch_ptr
@@ -122,11 +119,9 @@ class Netio(api.ApiHandler):
         );
         """
         WskClientNpi, WskRegistration = argv
-        rv = 0
-
         self.wsk_registrations.update({WskRegistration: WskClientNpi})
 
-        return rv
+        return 0
 
     @apihook('WskCaptureProviderNPI', argc=3)
     def WskCaptureProviderNPI(self, emu, argv, ctx={}):
@@ -139,10 +134,7 @@ class Netio(api.ApiHandler):
         WskRegistration, WaitTimeout, WskProviderNpi = argv
         rv = 0
 
-        cli = self.wsk_registrations.get(WskRegistration)
-        if not cli:
-            rv = ddk.STATUS_NOINTERFACE
-        else:
+        if cli := self.wsk_registrations.get(WskRegistration):
             if not self.provider_npi:
                 wpn = self.win.WSK_PROVIDER_NPI(emu.get_ptr_size())
 
@@ -156,6 +148,8 @@ class Netio(api.ApiHandler):
                 self.mem_write(WskProviderNpi, self.get_bytes(wpn))
                 self.provider_npi = wpn
 
+        else:
+            rv = ddk.STATUS_NOINTERFACE
         return rv
 
     @apihook('callback_WskSocket', argc=11)
@@ -206,9 +200,7 @@ class Netio(api.ApiHandler):
         )"""
         cli, stype, proto, laddr, raddr, flags, sctx, disp, proc, thr, secdesc, irp = argv # noqa
 
-        rv = 0
-
-        return rv
+        return 0
 
     @apihook('callback_WskControlClient', argc=8)
     def WskControlClient(self, emu, argv, ctx={}):
@@ -223,9 +215,7 @@ class Netio(api.ApiHandler):
           PIRP Irp
         )"""
         cli, ctl, insiz, inbuf, osiz, obuf, oret, irp = argv
-        rv = 0
-
-        return rv
+        return 0
 
     @apihook('callback_WskGetAddressInfo', argc=10)
     def WskGetAddressInfo(self, emu, argv, ctx={}):
@@ -242,9 +232,7 @@ class Netio(api.ApiHandler):
           PIRP Irp
         )"""
         cli, node, svc, namespace, prov, hints, res, proc, thr, irp = argv
-        rv = 0
-
-        return rv
+        return 0
 
     @apihook('callback_WskFreeAddressInfo', argc=2)
     def WskFreeAddressInfo(self, emu, argv, ctx={}):
@@ -253,9 +241,7 @@ class Netio(api.ApiHandler):
           PADDRINFOEXW AddrInfo
         )"""
         cli, addr = argv
-        rv = 0
-
-        return rv
+        return 0
 
     @apihook('callback_WskGetNameInfo', argc=9)
     def WskGetNameInfo(self, emu, argv, ctx={}):
@@ -271,9 +257,7 @@ class Netio(api.ApiHandler):
           PIRP Irp
         )"""
         cli, saddr, saddrlen, node, svc, flags, proc, thr, irp = argv
-        rv = 0
-
-        return rv
+        return 0
 
     @apihook('callback_WskControlSocket', argc=10)
     def WskControlSocket(self, emu, argv, ctx={}):
@@ -290,9 +274,7 @@ class Netio(api.ApiHandler):
           PIRP Irp
         )"""
         sock, rtype, ctl, level, isize, ibuf, osize, obuf, oret, irp = argv
-        rv = 0
-
-        return rv
+        return 0
 
     @apihook('callback_WskCloseSocket', argc=2)
     def WskCloseSocket(self, emu, argv, ctx={}):
@@ -301,9 +283,7 @@ class Netio(api.ApiHandler):
           PIRP Irp
         )"""
         sock, irp = argv
-        rv = 0
-
-        return rv
+        return 0
 
     @apihook('callback_WskBind', argc=4)
     def WskBind(self, emu, argv, ctx={}):
@@ -314,8 +294,6 @@ class Netio(api.ApiHandler):
           PIRP Irp
         )"""
         sock, laddr, flags, irp = argv
-        rv = 0
-
         sock_addr = self.mem_cast(winsock.sockaddr_in(emu.get_ptr_size()), laddr)
 
         raddr = inet_ntoa(sock_addr.sin_addr.to_bytes(4, 'little'))
@@ -323,7 +301,7 @@ class Netio(api.ApiHandler):
 
         argv[1] = '%s:%d' % (raddr, rport)
 
-        return rv
+        return 0
 
     @apihook('callback_WskSendTo', argc=7)
     def WskSendTo(self, emu, argv, ctx={}):
@@ -337,9 +315,7 @@ class Netio(api.ApiHandler):
           PIRP Irp
         )"""
         sock, buf, flags, raddr, infolen, ctlinfo, irp = argv
-        rv = 0
-
-        return rv
+        return 0
 
     @apihook('callback_WskReceiveFrom', argc=8)
     def WskReceiveFrom(self, emu, argv, ctx={}):
@@ -354,9 +330,7 @@ class Netio(api.ApiHandler):
           PIRP Irp
         )"""
         sock, buf, flags, raddr, ctllen, ctlinfo, irp = argv
-        rv = 0
-
-        return rv
+        return 0
 
     @apihook('callback_WskRelease', argc=2)
     def WskRelease(self, emu, argv, ctx={}):
@@ -365,9 +339,7 @@ class Netio(api.ApiHandler):
           _In_ PWSK_DATA_INDICATION DataIndication
         )"""
         sock, data_indic = argv
-        rv = 0
-
-        return rv
+        return 0
 
     @apihook('callback_WskGetLocalAddress', argc=2)
     def WskGetLocalAddress(self, emu, argv, ctx={}):
@@ -377,9 +349,7 @@ class Netio(api.ApiHandler):
           PIRP Irp
         )"""
         sock, laddr = argv
-        rv = 0
-
-        return rv
+        return 0
 
     @apihook('WskReleaseProviderNPI', argc=1)
     def WskReleaseProviderNPI(self, emu, argv, ctx={}):

@@ -39,8 +39,7 @@ class Ncrypt(api.ApiHandler):
             argv[1] = prov_str
 
             cm = emu.get_crypt_manager()
-            hnd = cm.crypt_open(pname=prov_str, flags=dwFlags)
-            if hnd:
+            if hnd := cm.crypt_open(pname=prov_str, flags=dwFlags):
                 self.mem_write(phProvider, hnd.to_bytes(emu.get_ptr_size(), 'little'))
 
         return windefs.ERROR_SUCCESS
@@ -69,13 +68,14 @@ class Ncrypt(api.ApiHandler):
         cm = emu.get_crypt_manager()
         if hProvider and phKey:
             ctx = cm.crypt_get(hProvider)
-            hnd = ctx.import_key(blob_type=blob_type,
-                                 blob=blob,
-                                 blob_len=cbData,
-                                 hnd_import_key=hImportKey,
-                                 param_list=pParameterList,
-                                 flags=dwFlags)
-            if hnd:
+            if hnd := ctx.import_key(
+                blob_type=blob_type,
+                blob=blob,
+                blob_len=cbData,
+                hnd_import_key=hImportKey,
+                param_list=pParameterList,
+                flags=dwFlags,
+            ):
                 self.mem_write(phKey, hnd.to_bytes(emu.get_ptr_size(), 'little'))
 
         return windefs.ERROR_SUCCESS
@@ -91,8 +91,7 @@ class Ncrypt(api.ApiHandler):
         hKey, dwFlags = argv
         cm = emu.get_crypt_manager()
         for hnd, ctx in cm.ctx_handles.items():
-            hnd_key = ctx.get_key(hKey)
-            if hnd_key:
+            if hnd_key := ctx.get_key(hKey):
                 ctx.delete_key(hKey)
                 break
 

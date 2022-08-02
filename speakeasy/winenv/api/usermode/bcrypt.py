@@ -47,8 +47,7 @@ class Bcrypt(api.ApiHandler):
                 argv[2] = implementation
 
         cm = emu.get_crypt_manager()
-        hnd = cm.crypt_open(pname=implementation, ptype=algid, flags=dwFlags)
-        if hnd:
+        if hnd := cm.crypt_open(pname=implementation, ptype=algid, flags=dwFlags):
             self.mem_write(phAlgorithm,
                            hnd.to_bytes(emu.get_ptr_size(), 'little'))
             argv[0] = hnd
@@ -69,7 +68,7 @@ class Bcrypt(api.ApiHandler):
         );
         """
         hAlgorithm, hImportKey, pszBlobType, phKey, pbInput, cbInput, dwFlags \
-            = argv
+                = argv
 
         blob_type = self.read_wide_string(pszBlobType)
         argv[2] = blob_type
@@ -81,11 +80,9 @@ class Bcrypt(api.ApiHandler):
         cm = emu.get_crypt_manager()
         if hAlgorithm and phKey:
             ctx = cm.crypt_get(hAlgorithm)
-            hnd = ctx.import_key(blob_type=blob_type,
-                                 blob=blob,
-                                 blob_len=cbInput,
-                                 flags=dwFlags)
-            if hnd:
+            if hnd := ctx.import_key(
+                blob_type=blob_type, blob=blob, blob_len=cbInput, flags=dwFlags
+            ):
                 self.mem_write(phKey,
                                hnd.to_bytes(emu.get_ptr_size(), 'little'))
                 argv[3] = hnd
@@ -122,8 +119,7 @@ class Bcrypt(api.ApiHandler):
         """
         hObject, pszProperty, pbOutput, cbOutput, pcbResult, dwFlags = argv
 
-        property = self.read_wide_string(pszProperty)
-        if property:
+        if property := self.read_wide_string(pszProperty):
             argv[1] = property
 
         # TODO: implement property retrieval
@@ -140,8 +136,7 @@ class Bcrypt(api.ApiHandler):
         hKey, = argv
         cm = emu.get_crypt_manager()
         for hnd, ctx in cm.ctx_handles.items():
-            hnd_key = ctx.get_key(hKey)
-            if hnd_key:
+            if hnd_key := ctx.get_key(hKey):
                 ctx.delete_key(hKey)
                 return ntdefs.STATUS_SUCCESS
 

@@ -79,15 +79,22 @@ EMPTY_PE_64 = DOS_HEADER + b'PE\x00\x00d\x86\x00\x00ABCD\x00\x00\x00\x00\x00\x00
 def normalize_dll_name(name):
     ret = name
 
-    # Funnel CRTs into a single handler
-    if name.lower().startswith(('api-ms-win-crt', 'vcruntime', 'ucrtbased', 'ucrtbase', 'msvcr', 'msvcp')):
+    if ret.lower().startswith(
+        (
+            'api-ms-win-crt',
+            'vcruntime',
+            'ucrtbased',
+            'ucrtbase',
+            'msvcr',
+            'msvcp',
+        )
+    ):
         ret = 'msvcrt'
 
-    # Redirect windows sockets 1.0 to windows sockets 2.0
-    elif name.lower().startswith(('winsock', 'wsock32')):
+    elif ret.lower().startswith(('winsock', 'wsock32')):
         ret = 'ws2_32'
 
-    elif name.lower().startswith('api-ms-win-core'):
+    elif ret.lower().startswith('api-ms-win-core'):
         ret = 'kernel32'
 
     return ret
@@ -106,7 +113,7 @@ class PeFile(pefile.PE):
 
         super(PeFile, self).__init__(name=path, data=data, fast_load=fast_load)
 
-        if 0 == self.OPTIONAL_HEADER.ImageBase:
+        if self.OPTIONAL_HEADER.ImageBase == 0:
             self.relocate_image(DEFAULT_LOAD_ADDR)
             super(PeFile, self).__init__(name=None, data=self.write())
 
@@ -131,23 +138,19 @@ class PeFile(pefile.PE):
             self.path = os.path.abspath(path)
         self.emu_path = emu_path
         self.arch = self._get_architecture()
-        if self.arch == _arch.ARCH_X86:
-            self.ptr_size = 4
-        else:
-            self.ptr_size = 8
-
+        self.ptr_size = 4 if self.arch == _arch.ARCH_X86 else 8
         self._patch_imports()
 
     def get_tls_callbacks(self):
         """
         Get the TLS callbacks for a PE (if any)
         """
-        max_tls_callbacks = 100
         callbacks = []
         if hasattr(self, 'DIRECTORY_ENTRY_TLS'):
             rva = (self.DIRECTORY_ENTRY_TLS.struct.AddressOfCallBacks -
                    self.OPTIONAL_HEADER.ImageBase)
 
+            max_tls_callbacks = 100
             for i in range(max_tls_callbacks):
                 ptr = self.get_data(rva + self.ptr_size * i, self.ptr_size)
                 ptr = int.from_bytes(ptr, 'little')
@@ -194,10 +197,9 @@ class PeFile(pefile.PE):
             for imp in entry.imports:
                 if imp.import_by_ordinal:
                     func_name = 'ordinal_%d' % (imp.ordinal)
-                    imports.update({imp.address: (dll, func_name)})
                 else:
                     func_name = imp.name.decode('utf-8')
-                    imports.update({imp.address: (dll, func_name)})
+                imports[imp.address] = (dll, func_name)
         return imports
 
     def get_exports(self):
@@ -237,8 +239,11 @@ class PeFile(pefile.PE):
         return self.sections
 
     def get_section_by_name(self, name):
-        sect = [s for s in self.get_sections() if s.Name.decode('utf-8').strip('\x00') == name]
-        if sect:
+        if sect := [
+            s
+            for s in self.get_sections()
+            if s.Name.decode('utf-8').strip('\x00') == name
+        ]:
             return sect[0]
 
     def _get_architecture(self):
@@ -267,7 +272,7 @@ class PeFile(pefile.PE):
             tmp = bytearray(self.mapped_image)
             offset = addr - self.base
             tmp[offset: offset + self.ptr_size] = \
-                self.imp_id.to_bytes(self.ptr_size, 'little')
+                    self.imp_id.to_bytes(self.ptr_size, 'little')
             self.mapped_image = bytes(tmp)
 
             self.import_table.update({self.imp_id: imp})
@@ -295,8 +300,7 @@ class PeFile(pefile.PE):
 
     def get_base_name(self):
         fn = os.path.basename(self.path)
-        bn = os.path.splitext(fn)[0]
-        return bn
+        return os.path.splitext(fn)[0]
 
     def get_image_size(self):
         return self.image_size
@@ -305,20 +309,26 @@ class PeFile(pefile.PE):
         return False
 
     def is_driver(self):
-        rv = super(PeFile, self).is_driver()
-        if rv:
+        if rv := super(PeFile, self).is_driver():
             return rv
 
-        system_DLLs = set((b'ntoskrnl.exe', b'hal.dll', b'ndis.sys',
-                           b'bootvid.dll', b'kdcom.dll', b'win32k.sys'))
+        system_DLLs = {
+            b'ntoskrnl.exe',
+            b'hal.dll',
+            b'ndis.sys',
+            b'bootvid.dll',
+            b'kdcom.dll',
+            b'win32k.sys',
+        }
 
-        if hasattr(self, 'DIRECTORY_ENTRY_IMPORT'):
-            if system_DLLs.intersection(
-                    [imp.dll.lower() for imp in self.DIRECTORY_ENTRY_IMPORT]):
-                return True
+
+        if hasattr(self, 'DIRECTORY_ENTRY_IMPORT') and system_DLLs.intersection(
+            [imp.dll.lower() for imp in self.DIRECTORY_ENTRY_IMPORT]
+        ):
+            return True
 
         if self.OPTIONAL_HEADER.Subsystem == pefile.SUBSYSTEM_TYPE['IMAGE_SUBSYSTEM_NATIVE'] \
-           and self.ep == 0:
+               and self.ep == 0:
             return True
 
     def is_dotnet(self):
@@ -388,8 +398,7 @@ class DecoyModule(PeFile):
     def get_base_name(self):
         p = self.get_emu_path()
         img = ntpath.basename(p)
-        bn = os.path.splitext(img)[0]
-        return bn
+        return os.path.splitext(img)[0]
 
     def get_ep(self):
         return self.get_base() + self.ep
@@ -447,9 +456,9 @@ class JitPeFile(object):
         else:
             data = self.basepe.get_data(offset, pefile.Structure(self.basepe.__IMAGE_SECTION_HEADER_format__).sizeof()) # noqa
 
-        sect = self.basepe.__unpack_data__(self.basepe.__IMAGE_SECTION_HEADER_format__, data,
-                                           offset)
-        return sect
+        return self.basepe.__unpack_data__(
+            self.basepe.__IMAGE_SECTION_HEADER_format__, data, offset
+        )
 
     def update_image_size(self):
         '''

@@ -32,8 +32,7 @@ class Hal(api.ApiHandler):
         """
         NTHALAPI KIRQL KeGetCurrentIrql();
         """
-        irql = emu.get_current_irql()
-        return irql
+        return emu.get_current_irql()
 
     @apihook('ExAcquireFastMutex', argc=1, conv=_arch.CALL_CONV_FASTCALL)
     def ExAcquireFastMutex(self, emu, argv, ctx={}):

@@ -73,9 +73,7 @@ class Msvcrt(api.ApiHandler):
     def __p__acmdln(self, emu, argv, ctx={}):
         """Command line global CRT variable"""
 
-        cmdln = self._acmdln()
-
-        return cmdln
+        return self._acmdln()
 
     @apihook('_onexit', argc=1, conv=e_arch.CALL_CONV_CDECL)
     def _onexit(self, emu, argv, ctx={}):
@@ -107,11 +105,13 @@ class Msvcrt(api.ApiHandler):
             self.mem_write(pReturnValue, struct.pack("<I",0))
 
         # Sanity checks
-        if sizeInWords > 0 and not wcstr:
-            rv = EINVAL
-        elif not mbstr:
-            rv = EINVAL
-        elif sizeInWords == 0 and wcstr:
+        if (
+            sizeInWords > 0
+            and not wcstr
+            or not mbstr
+            or sizeInWords == 0
+            and wcstr
+        ):
             rv = EINVAL
         else:
             # Convert the string
@@ -123,15 +123,14 @@ class Msvcrt(api.ApiHandler):
             if (len(ws) / 2 > sizeInWords and count != _TRUNCATE) and (count >= sizeInWords):
                 # Buffer too small
                 rv = ERANGE
+            elif count == _TRUNCATE:
+                self.mem_write(wcstr, ws[:(sizeInWords - 1) * 2])
+                if pReturnValue:
+                    self.mem_write(pReturnValue, struct.pack("<I",sizeInWords))
             else:
-                if count == _TRUNCATE:
-                    self.mem_write(wcstr, ws[:(sizeInWords - 1) * 2])
-                    if pReturnValue:
-                        self.mem_write(pReturnValue, struct.pack("<I",sizeInWords))
-                else:
-                    self.mem_write(wcstr, ws[:count * 2])
-                    if pReturnValue:
-                        self.mem_write(pReturnValue, struct.pack("<I",count + 1))
+                self.mem_write(wcstr, ws[:count * 2])
+                if pReturnValue:
+                    self.mem_write(pReturnValue, struct.pack("<I",count + 1))
 
         return rv
 
@@ -146,18 +145,13 @@ class Msvcrt(api.ApiHandler):
         """
 
         string1, string2, count = argv
-        rv = 1
-
         ws1 = self.read_wide_string(string1, max_chars=count)
         ws2 = self.read_wide_string(string2, max_chars=count)
 
         argv[0] = ws1
         argv[1] = ws2
 
-        if ws1.lower() == ws2.lower():
-            rv = 0
-
-        return rv
+        return 0 if ws1.lower() == ws2.lower() else 1
 
     # Reference: https://wiki.osdev.org/Visual_C%2B%2B_Runtime
     @apihook('_initterm_e', argc=2, conv=e_arch.CALL_CONV_CDECL)
@@ -169,9 +163,7 @@ class Msvcrt(api.ApiHandler):
 
         pfbegin, pfend = argv
 
-        rv = 0
-
-        return rv
+        return 0
 
     @apihook('_initterm', argc=2, conv=e_arch.CALL_CONV_CDECL)
     def _initterm(self, emu, argv, ctx={}):
@@ -179,9 +171,7 @@ class Msvcrt(api.ApiHandler):
 
         pfbegin, pfend = argv
 
-        rv = 0
-
-        return rv
+        return 0
 
     @apihook('__getmainargs', argc=5)
     def __getmainargs(self, emu, argv, ctx={}):
@@ -195,9 +185,7 @@ class Msvcrt(api.ApiHandler):
         """
 
         _Argc, _Argv, _Env, _DoWildCard, _StartInfo = argv
-        rv = 0
-
-        return rv
+        return 0
 
     @apihook('__wgetmainargs', argc=5)
     def __wgetmainargs(self, emu, argv, ctx={}):
@@ -211,9 +199,7 @@ class Msvcrt(api.ApiHandler):
         """
 
         _Argc, _Argv, _Env, _DoWildCard, _StartInfo = argv
-        rv = 0
-
-        return rv
+        return 0
 
     @apihook('__p___wargv', argc=0, conv=e_arch.CALL_CONV_CDECL)
     def __p___wargv(self, emu, argv, ctx={}):
@@ -224,7 +210,7 @@ class Msvcrt(api.ApiHandler):
 
         argv = [(a + '\x00\x00\x00\x00').encode('utf-16le') for a in _argv]
         array_size = (ptr_size * (len(argv) + 2))
-        total = sum([len(a) for a in argv])
+        total = sum(len(a) for a in argv)
         total += array_size
 
         sptr = 0
@@ -241,10 +227,8 @@ class Msvcrt(api.ApiHandler):
             self.mem_write(sptr, a)
             sptr += len(a)
         self.mem_write(pptr, b'\x00' * ptr_size)
-        rv = arg_mem
-
         # TODO: dispatch the VFV function array
-        return rv
+        return arg_mem
 
     @apihook('__p___argv', argc=0, conv=e_arch.CALL_CONV_CDECL)
     def __p___argv(self, emu, argv, ctx={}):
@@ -256,7 +240,7 @@ class Msvcrt(api.ApiHandler):
         argv = [(a + '\x00\x00\x00\x00').encode('utf-8') for a in _argv]
 
         array_size = (ptr_size * (len(argv) + 1))
-        total = sum([len(a) for a in argv])
+        total = sum(len(a) for a in argv)
         total += array_size
 
         sptr = 0
@@ -274,8 +258,7 @@ class Msvcrt(api.ApiHandler):
             sptr += len(a)
         self.mem_write(pptr, b'\x00' * ptr_size)
 
-        rv = arg_mem
-        return rv
+        return arg_mem
 
     @apihook('__p___argc', argc=0, conv=e_arch.CALL_CONV_CDECL)
     def __p___argc(self, emu, argv, ctx={}):
@@ -434,8 +417,7 @@ class Msvcrt(api.ApiHandler):
         );
         """
         x, = argv
-        y = abs(x)
-        return y
+        return abs(x)
 
     @apihook('strstr', argc=2, conv=e_arch.CALL_CONV_CDECL)
     def strstr(self, emu, argv, ctx={}):
@@ -456,11 +438,7 @@ class Msvcrt(api.ApiHandler):
             argv[1] = needle
 
         ret = _hay.find(needle)
-        if ret != -1:
-            ret = hay + ret
-        else:
-            ret = 0
-
+        ret = hay + ret if ret != -1 else 0
         return ret
 
     @apihook('wcsstr', argc=2, conv=e_arch.CALL_CONV_CDECL)
@@ -482,11 +460,7 @@ class Msvcrt(api.ApiHandler):
             argv[1] = needle
 
         ret = _hay.find(needle)
-        if ret != -1:
-            ret = hay + ret
-        else:
-            ret = 0
-
+        ret = hay + ret if ret != -1 else 0
         return ret
 
     @apihook('strncat_s', argc=4, conv=e_arch.CALL_CONV_CDECL)
@@ -503,28 +477,20 @@ class Msvcrt(api.ApiHandler):
         rv = 0
 
         is_truncated = (0xFFFFFFFF & count)
-        if is_truncated == _TRUNCATE:
-            is_truncated = True
-        else:
-            is_truncated = False
-
+        is_truncated = is_truncated == _TRUNCATE
         argv[0] = self.read_mem_string(strDest, 1)
         argv[2] = self.read_mem_string(src, 1)
 
         slen1 = self.mem_string_len(strDest, 1)
         rem = num - slen1
 
-        if is_truncated:
-            if rem < count:
+        if rem < count:
+            if is_truncated:
                 self.mem_copy(strDest + slen1, src, count-1)
             else:
-                self.mem_copy(strDest + slen1, src, count)
-        else:
-            if rem < count:
                 rv = EINVAL
-            else:
-                self.mem_copy(strDest + slen1, src, count)
-
+        else:
+            self.mem_copy(strDest + slen1, src, count)
         return rv
 
     @apihook('__stdio_common_vfprintf', argc=e_arch.VAR_ARGS,
@@ -534,10 +500,10 @@ class Msvcrt(api.ApiHandler):
         arch = emu.get_arch()
         if arch == e_arch.ARCH_AMD64:
             opts, stream, fmt, _, va_list = \
-                emu.get_func_argv(e_arch.CALL_CONV_CDECL, 5)[:5]
+                    emu.get_func_argv(e_arch.CALL_CONV_CDECL, 5)[:5]
         else:
             opts, opts2, stream, fmt, _, va_list = \
-                emu.get_func_argv(e_arch.CALL_CONV_CDECL, 6)[:6]
+                    emu.get_func_argv(e_arch.CALL_CONV_CDECL, 6)[:6]
 
         rv = 0
 
@@ -810,7 +776,7 @@ class Msvcrt(api.ApiHandler):
         """
         diff = 0
         buff1, buff2, cnt = argv
-        for i in range(cnt):
+        for _ in range(cnt):
             b1 = self.mem_read(buff1, 1)
             b2 = self.mem_read(buff2, 1)
             if b1 > b2:
@@ -838,8 +804,6 @@ class Msvcrt(api.ApiHandler):
 
         # Two additional arguments are pushed to the function to check security cookies
         cookie_ptr, cookie_func, record, frame, context, dispath_ctx = argv
-        rv = 0
-
         cookie = self.mem_read(cookie_ptr, 4)
         cookie = int.from_bytes(cookie, 'little')
 
@@ -883,7 +847,7 @@ class Msvcrt(api.ApiHandler):
 
             curr_frame = reg.Next
 
-        return rv
+        return 0
 
     @apihook('_seh_filter_exe', argc=2, conv=e_arch.CALL_CONV_CDECL)
     def _seh_filter_exe(self, emu, argv, ctx={}):
@@ -894,9 +858,7 @@ class Msvcrt(api.ApiHandler):
         );
         """
         except_num, exc_ptr = argv
-        rv = 1
-
-        return rv
+        return 1
 
     @apihook('_except_handler3', argc=4, conv=e_arch.CALL_CONV_CDECL)
     def _except_handler3(self, emu, argv, ctx={}):
@@ -908,8 +870,7 @@ class Msvcrt(api.ApiHandler):
         PEXCEPTION_REGISTRATION dispatcher
         );
         """
-        rv = 1
-        return rv
+        return 1
 
     @apihook('_seh_filter_dll', argc=2, conv=e_arch.CALL_CONV_CDECL)
     def _seh_filter_dll(self, emu, argv, ctx={}):
@@ -920,9 +881,7 @@ class Msvcrt(api.ApiHandler):
         );
         """
         except_num, exc_ptr = argv
-        rv = 1
-
-        return rv
+        return 1
 
     @apihook('puts', argc=1, conv=e_arch.CALL_CONV_CDECL)
     def puts(self, emu, argv, ctx={}):
@@ -935,9 +894,7 @@ class Msvcrt(api.ApiHandler):
 
         string = self.read_mem_string(s, 1)
         argv[0] = string
-        rv = len(string)
-
-        return rv
+        return len(string)
 
     @apihook('_initialize_onexit_table', argc=1, conv=e_arch.CALL_CONV_CDECL)
     def _initialize_onexit_table(self, emu, argv, ctx={}):
@@ -946,9 +903,7 @@ class Msvcrt(api.ApiHandler):
             _onexit_table_t* table
             );
         """
-        rv = 0
-
-        return rv
+        return 0
 
     @apihook('_register_onexit_function', argc=2, conv=e_arch.CALL_CONV_CDECL)
     def _register_onexit_function(self, emu, argv, ctx={}):
@@ -958,9 +913,7 @@ class Msvcrt(api.ApiHandler):
             _onexit_t        function
             );
         """
-        rv = 0
-
-        return rv
+        return 0
 
     @apihook('malloc', argc=1, conv=e_arch.CALL_CONV_CDECL)
     def malloc(self, emu, argv, ctx={}):
@@ -971,8 +924,7 @@ class Msvcrt(api.ApiHandler):
         """
         size, = argv
 
-        chunk = self.heap_alloc(size, heap='HeapAlloc')
-        return chunk
+        return self.heap_alloc(size, heap='HeapAlloc')
 
     @apihook('calloc', argc=2, conv=e_arch.CALL_CONV_CDECL)
     def calloc(self, emu, argv, ctx={}):
@@ -1047,9 +999,7 @@ class Msvcrt(api.ApiHandler):
 
         string = self.read_mem_string(s, 1)
         argv[0] = string
-        rv = len(string)
-
-        return rv
+        return len(string)
 
     @apihook('toupper', argc=1, conv=e_arch.CALL_CONV_CDECL)
     def toupper(self, emu, argv, ctx={}):
@@ -1060,10 +1010,7 @@ class Msvcrt(api.ApiHandler):
         """
         c, = argv
         argv[0] = c
-        if 0x00 <= c <= 0x7f:
-            c = ord(chr(c).upper())
-        else:
-            c = 0x00
+        c = ord(chr(c).upper()) if 0x00 <= c <= 0x7f else 0x00
         return c
 
     @apihook('strlen', argc=1, conv=e_arch.CALL_CONV_CDECL)
@@ -1077,9 +1024,7 @@ class Msvcrt(api.ApiHandler):
 
         string = self.read_mem_string(s, 1)
         argv[0] = string
-        rv = len(string)
-
-        return rv
+        return len(string)
 
     @apihook('strcat', argc=2, conv=e_arch.CALL_CONV_CDECL)
     def strcat(self, emu, argv, ctx={}):
@@ -1125,9 +1070,7 @@ class Msvcrt(api.ApiHandler):
         s, = argv
         string = self.read_wide_string(s)
         argv[0] = string
-        rv = len(string)
-
-        return rv
+        return len(string)
 
     @apihook('_lock', argc=1, conv=e_arch.CALL_CONV_CDECL)
     def _lock(self, emu, argv, ctx={}):
@@ -1184,12 +1127,9 @@ class Msvcrt(api.ApiHandler):
         );
         """
         s1, s2, c = argv
-        rv = 1
-
         string1 = self.read_mem_string(s1, 1)
         string2 = self.read_mem_string(s2, 1)
-        if string1 == string2:
-            rv = 0
+        rv = 0 if string1 == string2 else 1
         argv[0] = string1
         argv[1] = string2
 
@@ -1204,12 +1144,9 @@ class Msvcrt(api.ApiHandler):
         );
         """
         s1, s2 = argv
-        rv = 1
-
         string1 = self.read_mem_string(s1, 1)
         string2 = self.read_mem_string(s2, 1)
-        if string1 == string2:
-            rv = 0
+        rv = 0 if string1 == string2 else 1
         argv[0] = string1
         argv[1] = string2
 
@@ -1229,11 +1166,7 @@ class Msvcrt(api.ApiHandler):
         needle = c.to_bytes(1, 'little')
 
         offset = hay.rfind(needle)
-        if offset < 0:
-            rv = 0
-        else:
-            rv = cstr + offset
-
+        rv = 0 if offset < 0 else cstr + offset
         argv[0] = cs
         argv[1] = needle.decode('utf-8')
 
@@ -1283,11 +1216,7 @@ class Msvcrt(api.ApiHandler):
         needle = c.to_bytes(1, 'little')
 
         offset = hay.find(needle)
-        if offset < 0:
-            rv = 0
-        else:
-            rv = cstr + offset
-
+        rv = 0 if offset < 0 else cstr + offset
         argv[0] = cs
         argv[1] = needle.decode('utf-8')
 
@@ -1589,18 +1518,13 @@ class Msvcrt(api.ApiHandler):
             );
         """
         string1, string2 = argv
-        rv = 1
-
         ws1 = self.read_wide_string(string1)
         ws2 = self.read_wide_string(string2)
 
         argv[0] = ws1
         argv[1] = ws2
 
-        if ws1.lower() == ws2.lower():
-            rv = 0
-
-        return rv
+        return 0 if ws1.lower() == ws2.lower() else 1
 
     @apihook('wcscmp', argc=2, conv=e_arch.CALL_CONV_CDECL)
     def wcscmp(self, emu, argv, ctx={}):
@@ -1611,12 +1535,9 @@ class Msvcrt(api.ApiHandler):
         );
         """
         s1, s2 = argv
-        rv = 1
-
         string1 = self.read_wide_string(s1)
         string2 = self.read_wide_string(s2)
-        if string1 == string2:
-            rv = 0
+        rv = 0 if string1 == string2 else 1
         argv[0] = string1
         argv[1] = string2
 

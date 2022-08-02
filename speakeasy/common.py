@@ -94,19 +94,13 @@ class Hook(object):
             return False
 
     def _wrap_intr_cb(self, emu, num, ctx=[]):
-        if self.enabled:
-            return self.cb(self.se_obj, num, self.ctx)
-        return True
+        return self.cb(self.se_obj, num, self.ctx) if self.enabled else True
 
     def _wrap_in_insn_cb(self, emu, port, size, ctx=[]):
-        if self.enabled:
-            return self.cb(self.se_obj, port, size)
-        return True
+        return self.cb(self.se_obj, port, size) if self.enabled else True
 
     def _wrap_syscall_insn_cb(self, emu, ctx=[]):
-        if self.enabled:
-            return self.cb(self.se_obj)
-        return True
+        return self.cb(self.se_obj) if self.enabled else True
 
     def _wrap_memory_access_cb(self, emu, access, addr, size, value, ctx):
         try:
@@ -121,9 +115,7 @@ class Hook(object):
             return False
 
     def _wrap_invalid_insn_cb(self, emu, ctx=[]):
-        if self.enabled:
-            return self.cb(self.se_obj, self.ctx)
-        return True
+        return self.cb(self.se_obj, self.ctx) if self.enabled else True
 
 class ApiHook(Hook):
     """

@@ -30,16 +30,13 @@ class Mpr(api.ApiHandler):
         """
         dwScope, dwType, dwUsage, lpNetResource, lphEnum = argv
 
-        scope = mpr.get_define_int(dwScope, 'RESOURCE_')
-        if scope:
+        if scope := mpr.get_define_int(dwScope, 'RESOURCE_'):
             argv[0] = scope
 
-        type = mpr.get_define_int(dwType, 'RESOURCETYPE_')
-        if type:
+        if type := mpr.get_define_int(dwType, 'RESOURCETYPE_'):
             argv[1] = type
 
-        usage = mpr.get_define_int(dwUsage, 'RESOURCEUSAGE_')
-        if usage:
+        if usage := mpr.get_define_int(dwUsage, 'RESOURCEUSAGE_'):
             argv[2] = usage
 
         return mpr.ERROR_NO_NETWORK
@@ -81,8 +78,7 @@ class Mpr(api.ApiHandler):
 
         cw = self.get_char_width(ctx)
 
-        local_name = self.read_mem_string(lpLocalName, cw)
-        if local_name:
+        if local_name := self.read_mem_string(lpLocalName, cw):
             argv[0] = local_name
 
         return mpr.ERROR_NO_NETWORK

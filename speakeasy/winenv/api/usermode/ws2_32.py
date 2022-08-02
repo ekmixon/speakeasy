@@ -60,8 +60,7 @@ class Ws2_32(api.ApiHandler):
 
         self.mem_write(lpWSAData, self.get_bytes(data))
 
-        rv = windefs.ERROR_SUCCESS
-        return rv
+        return windefs.ERROR_SUCCESS
 
     @apihook('WSACleanup', argc=0, ordinal=116)
     def WSACleanup(self, emu, argv, ctx={}):
@@ -169,9 +168,7 @@ class Ws2_32(api.ApiHandler):
         """
         hostshort, = argv
 
-        netshort = htons(hostshort)
-
-        return netshort
+        return htons(hostshort)
 
     @apihook('ntohs', argc=1, ordinal=15)
     def ntohs(self, emu, argv, ctx={}):
@@ -207,21 +204,18 @@ class Ws2_32(api.ApiHandler):
         );
         """
         s, level, optname, optval, optlen = argv
-        rv = 0
-
-        opt_level = winsock.get_define(level, 'SOL_')
-        if opt_level:
+        if opt_level := winsock.get_define(level, 'SOL_'):
             argv[1] = opt_level
 
         opt_name = winsock.get_define(optname, 'SO_')
         if opt_name:
             argv[2] = opt_name
 
-        if opt_name == 'SO_RCVBUF' or opt_name == 'SO_SNDBUF':
+        if opt_name in ['SO_RCVBUF', 'SO_SNDBUF']:
             opt_val = self.mem_read(optval, optlen)
             argv[3] = struct.unpack('<I', opt_val)[0]
 
-        return rv
+        return 0
 
     @apihook('WSASetLastError', argc=1, ordinal=112)
     def WSASetLastError(self, emu, argv, ctx={}):
@@ -270,8 +264,7 @@ class Ws2_32(api.ApiHandler):
 
         if ip:
             hostent = self.wstypes.hostent(emu.get_ptr_size())
-            buflen = len(name)
-            buflen += 8
+            buflen = len(name) + 8
             buflen += len(ip)
             ptr_hostent = self.mem_alloc(buflen, tag='api.struct.HOSTENT')
             hostent.h_name = argv[0]
@@ -377,9 +370,7 @@ class Ws2_32(api.ApiHandler):
         );
         """
         s, backlog = argv
-        rv = windefs.ERROR_SUCCESS
-
-        return rv
+        return windefs.ERROR_SUCCESS
 
     @apihook('select', argc=5, ordinal=18)
     def select(self, emu, argv, ctx={}):
@@ -465,7 +456,7 @@ class Ws2_32(api.ApiHandler):
         raddr = inet_ntoa(in_addr.to_bytes(4, 'little'))
         rv = self.addr_bufs.get(raddr)
         if not rv:
-            buf = self.mem_alloc(len(raddr), tag='api.ws2_32.inet_ntoa.%s' % (raddr))
+            buf = self.mem_alloc(len(raddr), tag=f'api.ws2_32.inet_ntoa.{raddr}')
             self.mem_write(buf, raddr.encode('utf-8'))
             self.addr_bufs.update({raddr: buf})
         return buf
@@ -547,20 +538,17 @@ class Ws2_32(api.ApiHandler):
         );
         """
         s, buf, blen, flags = argv
-        data = b''
-
         socket = self.netman.get_socket(s)
         stype = socket.get_type()
         proto = 'unknown'
-        if stype == 'SOCK_STREAM':
-            proto = 'tcp'
-        elif stype == 'SOCK_DGRAM':
+        if stype == 'SOCK_DGRAM':
             proto = 'udp'
         elif stype == 'SOCK_RAW':
             proto = 'raw'
 
-        if buf:
-            data = self.mem_read(buf, blen)
+        elif stype == 'SOCK_STREAM':
+            proto = 'tcp'
+        data = self.mem_read(buf, blen) if buf else b''
         raddr, rport = socket.get_connection_info()
 
         self.log_network(raddr, rport, typ='data_out', proto=proto, method='winsock.send',
@@ -579,13 +567,12 @@ class Ws2_32(api.ApiHandler):
 
         rv = 0
 
-        socket = self.netman.get_socket(s)
-        if not socket:
-            # This isnt a valid socket, return invalid
-            rv = winsock.WSAENOTSOCK
-        else:
+        if socket := self.netman.get_socket(s):
             self.netman.close_socket(s)
 
+        else:
+            # This isnt a valid socket, return invalid
+            rv = winsock.WSAENOTSOCK
         return rv
 
     @apihook('ioctlsocket', argc=3, ordinal=10)
@@ -600,8 +587,7 @@ class Ws2_32(api.ApiHandler):
         s, cmd, argp = argv
         rv = winsock.WSAENOTSOCK
 
-        socket = self.netman.get_socket(s)
-        if socket:
+        if socket := self.netman.get_socket(s):
             rv = 0
 
         return rv
@@ -638,15 +624,10 @@ class Ws2_32(api.ApiHandler):
         # Handles a specific case where an IP address is converted as part of a URL
         # TODO: handle additional cases
         ip_url_re = re.compile(r'https?:\/\/(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})')
-        match = re.match(ip_url_re, host)
-        if match:
-            ip_addr = match.group(1)
+        if match := re.match(ip_url_re, host):
+            ip_addr = match[1]
         else:
-            # Use default IP address
-            ip_addr = self.netman.name_lookup('default')
-            if not ip_addr:
-                ip_addr = '127.0.0.1'
-
+            ip_addr = self.netman.name_lookup('default') or '127.0.0.1'
         ip_bytes = inet_aton(ip_addr)
 
         # Populate sockaddr_in
@@ -697,21 +678,17 @@ class Ws2_32(api.ApiHandler):
         );
         """
         s, level, optname, optval, optlen = argv
-        rv = 0
-
-        opt_level = winsock.get_define(level, 'SOL_')
-        if opt_level:
+        if opt_level := winsock.get_define(level, 'SOL_'):
             argv[1] = opt_level
 
         opt_len = self.mem_read(optlen, 4)
         opt_len = struct.unpack('<I', opt_len)[0]
         argv[4] = opt_len
 
-        opt_name = winsock.get_define(optname, 'SO_')
-        if opt_name:
+        if opt_name := winsock.get_define(optname, 'SO_'):
             argv[2] = opt_name
-            if opt_name == 'SO_RCVBUF' or opt_name == 'SO_SNDBUF':
+            if opt_name in ['SO_RCVBUF', 'SO_SNDBUF']:
                 opt_val = winsock.SOCK_BUF_SIZE
                 self.mem_write(optval, opt_val.to_bytes(opt_len, 'little'))
 
-        return rv
+        return 0

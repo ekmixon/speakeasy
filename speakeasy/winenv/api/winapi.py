@@ -17,9 +17,12 @@ def autoload_api_handlers():
         if not modname.startswith(('speakeasy.winenv.api.kernelmode.',
                                    'speakeasy.winenv.api.usermode.')):
             continue
-        for clsname, clsobj in inspect.getmembers(modobj, inspect.isclass):
-            if clsobj is not api.ApiHandler and issubclass(clsobj, api.ApiHandler):
-                api_handlers.append((clsobj.name, clsobj))
+        api_handlers.extend(
+            (clsobj.name, clsobj)
+            for clsname, clsobj in inspect.getmembers(modobj, inspect.isclass)
+            if clsobj is not api.ApiHandler
+            and issubclass(clsobj, api.ApiHandler)
+        )
 
     return tuple(api_handlers)
 
@@ -58,17 +61,13 @@ class WindowsApi:
         mod = self.mods.get(mod_name)
         if not mod:
             mod = self.load_api_handler(mod_name)
-        if not mod:
-            return None, None
-        return (mod, mod.get_data_handler(exp_name))
+        return (mod, mod.get_data_handler(exp_name)) if mod else (None, None)
 
     def get_export_func_handler(self, mod_name, exp_name):
         mod = self.mods.get(mod_name)
         if not mod:
             mod = self.load_api_handler(mod_name)
-        if not mod:
-            return None, None
-        return (mod, mod.get_func_handler(exp_name))
+        return (mod, mod.get_func_handler(exp_name)) if mod else (None, None)
 
     def call_api_func(self, mod, func, argv, ctx):
         """

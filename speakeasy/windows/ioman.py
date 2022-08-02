@@ -15,8 +15,6 @@ class IoManager(object):
 
     def dev_ioctl(self, arch, dev, ioctl, inbuf):
         rv = ddk.STATUS_INVALID_DEVICE_REQUEST
-        outbuf = b''
-
         # Get parent driver for you
         drv = dev.get_parent_driver()
         bn = drv.get_basename()
@@ -25,6 +23,8 @@ class IoManager(object):
         mod = [m for m in self.emu_kmods if bn == m.get_mod_name()]
         if not mod:
             rv = ddk.STATUS_INVALID_DEVICE_REQUEST
+            outbuf = b''
+
             return (rv, outbuf)
         mod = mod[0]
 

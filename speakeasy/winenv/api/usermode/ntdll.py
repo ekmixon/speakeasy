@@ -120,8 +120,7 @@ class Ntdll(api.ApiHandler):
         argv[1] = pretty_flags
 
         if not hmod:
-            STATUS_DLL_NOT_FOUND = 0xC0000135
-            return STATUS_DLL_NOT_FOUND
+            return 0xC0000135
 
         if BaseAddress:
             self.mem_write(BaseAddress, hmod.to_bytes(self.get_ptr_size(), 'little'))
@@ -197,10 +196,7 @@ class Ntdll(api.ApiHandler):
         RtlEncodePointer(IN PVOID Pointer)
         '''
         Ptr,  = argv
-        # Just increment the pointer for now like kernel32.EncodePointer
-        rv = Ptr + 1
-
-        return rv
+        return Ptr + 1
 
     @apihook('RtlDecodePointer', argc=1)
     def RtlDecodePointer(self, emu, argv, ctx={}):
@@ -210,10 +206,7 @@ class Ntdll(api.ApiHandler):
         RtlDecodePointer(IN PVOID Pointer)
         '''
         Ptr,  = argv
-        # Just decrement the pointer for now like kernel32.DecodePointer
-        rv = Ptr - 1
-
-        return rv
+        return Ptr - 1
 
     @apihook('NtWaitForSingleObject', argc=3)
     def NtWaitForSingleObject(self, emu, argv, ctx={}):
@@ -228,15 +221,7 @@ class Ntdll(api.ApiHandler):
         '''
         hHandle, alertable, timeout = argv
 
-        # Other documented return status are:
-        #      STATUS_TIMEOUT = 0x00000102
-        #      STATUS_ACCESS_DENIED = 0xC0000022
-        #      STATUS_ALERTED = 0x00000101
-        #      STATUS_INVALID_HANDLE = 0xC0000008
-        #      STATUS_USER_APC = 0x000000C0
-        rv = ddk.STATUS_SUCCESS
-
-        return rv
+        return ddk.STATUS_SUCCESS
     
     @apihook('RtlComputeCrc32', argc=3)
     def RtlComputeCrc32(self, emu, argv, ctx={}):

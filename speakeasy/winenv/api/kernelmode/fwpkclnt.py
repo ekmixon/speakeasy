@@ -228,8 +228,7 @@ class Fwpkclnt(api.ApiHandler):
         for k, v in self.callouts.items():
             if v['key'] == co_key:
                 cid = k
-                self.callouts[k].update({'name': name, 'desc': desc})
-
+                self.callouts[cid].update({'name': name, 'desc': desc})
         if pCid:
             cid = self.mem_write(pCid, cid.to_bytes(4, 'little'))
 
@@ -285,9 +284,7 @@ class Fwpkclnt(api.ApiHandler):
         """
         eng, fid = argv
 
-        rv = ddk.STATUS_SUCCESS
-
-        return rv
+        return ddk.STATUS_SUCCESS
 
     @apihook('FwpmCalloutDeleteById0', argc=2)
     def FwpmCalloutDeleteById0(self, emu, argv, ctx={}):
@@ -300,8 +297,7 @@ class Fwpkclnt(api.ApiHandler):
         eng, cid = argv
         rv = FWP_E_CALLOUT_NOT_FOUND
 
-        co = self.callouts.get(cid)
-        if co:
+        if co := self.callouts.get(cid):
             rv = ddk.STATUS_SUCCESS
         return rv
 
@@ -315,8 +311,7 @@ class Fwpkclnt(api.ApiHandler):
         cid, = argv
         rv = FWP_E_CALLOUT_NOT_FOUND
 
-        co = self.callouts.get(cid)
-        if co:
+        if co := self.callouts.get(cid):
             rv = ddk.STATUS_SUCCESS
         return rv
 
@@ -349,8 +344,7 @@ class Fwpkclnt(api.ApiHandler):
         """
         eng, = argv
 
-        rv = ddk.STATUS_SUCCESS
-        return rv
+        return ddk.STATUS_SUCCESS
 
     @apihook('FwpsInjectionHandleDestroy0', argc=1)
     def FwpsInjectionHandleDestroy0(self, emu, argv, ctx={}):

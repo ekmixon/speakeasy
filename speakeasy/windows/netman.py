@@ -8,9 +8,7 @@ from speakeasy.errors import NetworkEmuError
 
 
 def is_empty(bio):
-    if len(bio.getbuffer()) == bio.tell():
-        return True
-    return False
+    return len(bio.getbuffer()) == bio.tell()
 
 
 def normalize_response_path(path):
@@ -59,8 +57,7 @@ class Socket(object):
         for resp in responses:
             mode = resp.get('mode', '')
             if mode.lower() == 'default':
-                default_resp_path = resp.get('path')
-                if default_resp_path:
+                if default_resp_path := resp.get('path'):
                     default_resp_path = normalize_response_path(default_resp_path)
                     with open(default_resp_path, 'rb') as f:
                         self.curr_packet = BytesIO(f.read())
@@ -70,7 +67,7 @@ class Socket(object):
         data = self.curr_packet.read(size)
         if not peek:
             return data
-        elif peek:
+        else:
             self.curr_packet.seek(-size, os.SEEK_CUR)
         return data
 
@@ -113,11 +110,7 @@ class WininetRequest(WininetComponent):
         super(WininetRequest, self).__init__()
 
         # The WiniNet APIs default to a HTTP "GET" if no verb is specified
-        if not verb:
-            self.verb = 'get'
-        else:
-            self.verb = verb.lower()
-
+        self.verb = verb.lower() if verb else 'get'
         self.objname = objname
         if not self.objname:
             self.objname = ''
@@ -148,9 +141,7 @@ class WininetRequest(WininetComponent):
         return sess.get_instance()
 
     def is_secure(self):
-        if 'INTERNET_FLAG_SECURE' in self.flags:
-            return True
-        return False
+        return 'INTERNET_FLAG_SECURE' in self.flags
 
     def format_http_request(self, headers=None):
         request_string = ''
@@ -167,8 +158,7 @@ class WininetRequest(WininetComponent):
         host = sess.server
         request_string += 'Host: %s\n' % (host)
 
-        ua = inst.get_user_agent()
-        if ua:
+        if ua := inst.get_user_agent():
             request_string += 'User-Agent: %s\n' % (ua)
 
         if 'INTERNET_FLAG_KEEP_CONNECTION' in self.flags:
@@ -211,8 +201,7 @@ class WininetRequest(WininetComponent):
             verb = res.get('verb', '')
             if verb.lower() == self.verb:
 
-                resp_files = res.get('files', [])
-                if resp_files:
+                if resp_files := res.get('files', []):
                     for file in resp_files:
                         mode = file.get('mode', '')
                         if mode.lower() == 'by_ext':
@@ -322,10 +311,8 @@ class NetworkManager(object):
         self.curr_fd += 4
 
         if self.config:
-            winsock = self.config.get('winsock')
-            if winsock:
-                responses = winsock.get('responses')
-                if responses:
+            if winsock := self.config.get('winsock'):
+                if responses := winsock.get('responses'):
                     sock.fill_recv_queue(responses)
 
         self.sockets.update({fd: sock})
@@ -368,10 +355,9 @@ class NetworkManager(object):
             return _read_txt_data(txt[0])
 
     def ip_lookup(self, ip):
-        for item in self.dns:
-            if item['response'] == ip:
-                return item['query']
-        return None
+        return next(
+            (item['query'] for item in self.dns if item['response'] == ip), None
+        )
 
     def new_wininet_inst(self, user_agent, access, proxy, bypass, flags):
         wini = WininetInstance(user_agent, access, proxy, bypass, flags)

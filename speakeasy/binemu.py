@@ -98,7 +98,7 @@ class BinaryEmulator(MemoryManager):
             if name.lower() == _eng.lower():
                 self.emu_eng = eng()
         if not self.emu_eng:
-            raise EmuException('Unsupported emulation engine: %s' % (_eng))
+            raise EmuException(f'Unsupported emulation engine: {_eng}')
 
         self.osversion = config.get('os_ver', {})
         self.env = config.get('env', {})
@@ -139,14 +139,12 @@ class BinaryEmulator(MemoryManager):
         """
         Get the human readable OS version string
         """
-        osver = self.get_os_version()
-        if osver:
+        if osver := self.get_os_version():
             os_name = osver.get('name', '')
             major = osver.get('major')
             minor = osver.get('minor')
             if major is not None and minor is not None:
-                verstr = '%s.%d_%d' % (os_name, major, minor)
-                return verstr
+                return '%s.%d_%d' % (os_name, major, minor)
 
     def get_domain(self):
         """
@@ -224,11 +222,11 @@ class BinaryEmulator(MemoryManager):
         Write a value to an emulated cpu register
         """
         if isinstance(reg, str):
-            _reg = e_arch.REG_LOOKUP.get(reg.lower())
-            if not _reg:
-                raise EmuException('Invalid register access %s' % (reg))
-            reg = _reg
+            if _reg := e_arch.REG_LOOKUP.get(reg.lower()):
+                reg = _reg
 
+            else:
+                raise EmuException(f'Invalid register access {reg}')
         self.emu_eng.reg_write(reg, val)
 
     def reg_read(self, reg):
@@ -236,11 +234,11 @@ class BinaryEmulator(MemoryManager):
         Read a value from an emulated cpu register
         """
         if isinstance(reg, str):
-            _reg = e_arch.REG_LOOKUP.get(reg.lower())
-            if not _reg:
-                raise EmuException('Invalid register access %s' % (reg))
-            reg = _reg
+            if _reg := e_arch.REG_LOOKUP.get(reg.lower()):
+                reg = _reg
 
+            else:
+                raise EmuException(f'Invalid register access {reg}')
         return self.emu_eng.reg_read(reg)
 
     def set_hooks(self):
@@ -258,15 +256,14 @@ class BinaryEmulator(MemoryManager):
         Disassemble bytes using capstone
         """
         try:
-            if fast:
-                tu = [i for i in self.disasm_eng.disasm_lite(bytes(mem), addr)]
-                address, size, mnem, oper = tu[0]
-            else:
-                return [i for i in self.disasm_eng.disasm(bytes(mem), addr)]
+            if not fast:
+                return list(self.disasm_eng.disasm(bytes(mem), addr))
+            tu = list(self.disasm_eng.disasm_lite(bytes(mem), addr))
+            address, size, mnem, oper = tu[0]
         except IndexError:
             raise EmuException("Failed to disasm at address: 0x%x" % (addr))
 
-        op = '%s %s' % (mnem, oper)
+        op = f'{mnem} {oper}'
         return ((mnem, oper, op))
 
     def disasm(self, mem, addr, fast=True):
@@ -370,25 +367,28 @@ class BinaryEmulator(MemoryManager):
         endian = 'little'
 
         # Handle calling conventions using floats
-        if arch in (e_arch.ARCH_X86, e_arch.ARCH_AMD64):
-            if callconv == e_arch.CALL_CONV_FLOAT:
-
-                for i, r in enumerate((e_arch.X86_REG_XMM0,
-                                       e_arch.X86_REG_XMM1,
-                                       e_arch.X86_REG_XMM2,
-                                       e_arch.X86_REG_XMM3)):
-                    if nargs == 0:
-                        break
-                    val = self.reg_read(r)
-                    argv.append(val)
-                    nargs -= 1
+        if (
+            arch in (e_arch.ARCH_X86, e_arch.ARCH_AMD64)
+            and callconv == e_arch.CALL_CONV_FLOAT
+        ):
+            for r in (e_arch.X86_REG_XMM0, e_arch.X86_REG_XMM1, e_arch.X86_REG_XMM2, e_arch.X86_REG_XMM3):
+                if nargs == 0:
+                    break
+                val = self.reg_read(r)
+                argv.append(val)
+                nargs -= 1
 
         if arch == e_arch.ARCH_X86:
             sp = self.reg_read(e_arch.X86_REG_ESP)
             if callconv == e_arch.CALL_CONV_FASTCALL:
                 if nargs >= 2:
-                    argv.append(self.reg_read(e_arch.X86_REG_ECX))
-                    argv.append(self.reg_read(e_arch.X86_REG_EDX))
+                    argv.extend(
+                        (
+                            self.reg_read(e_arch.X86_REG_ECX),
+                            self.reg_read(e_arch.X86_REG_EDX),
+                        )
+                    )
+
                     nargs -= 2
                 elif nargs == 1:
                     argv.append(self.reg_read(e_arch.X86_REG_ECX))
@@ -397,8 +397,7 @@ class BinaryEmulator(MemoryManager):
             sp = self.reg_read(e_arch.AMD64_REG_RSP)
             sp += 0x20
 
-            for i, r in enumerate((e_arch.AMD64_REG_RCX, e_arch.AMD64_REG_RDX,
-                                   e_arch.AMD64_REG_R8, e_arch.AMD64_REG_R9)):
+            for r in (e_arch.AMD64_REG_RCX, e_arch.AMD64_REG_RDX, e_arch.AMD64_REG_R8, e_arch.AMD64_REG_R9):
                 if nargs == 0:
                     break
                 val = self.reg_read(r)
@@ -409,7 +408,7 @@ class BinaryEmulator(MemoryManager):
 
         # Skip past the saved ret addr
         sp += ptr_size
-        for i in range(nargs):
+        for _ in range(nargs):
             ptr = self.mem_read(sp, ptr_size)
             argv.append(int.from_bytes(ptr, endian))
             sp += ptr_size
@@ -447,9 +446,8 @@ class BinaryEmulator(MemoryManager):
             # If cdecl, the emu engine will clean the stack
             pass
         elif conv == e_arch.CALL_CONV_FASTCALL:
-            if self.get_arch() == e_arch.ARCH_X86:
-                if argc > 2:
-                    self.clean_stack_args(argc - 2)
+            if self.get_arch() == e_arch.ARCH_X86 and argc > 2:
+                self.clean_stack_args(argc - 2)
         else:
             self.clean_stack_args(argc)
 
@@ -514,7 +512,7 @@ class BinaryEmulator(MemoryManager):
         """
         out = []
         sp = self.get_stack_ptr()
-        for i in range(num_ptrs):
+        for _ in range(num_ptrs):
             try:
                 ptr = self.mem_read(sp, self.get_ptr_size())
             except Exception:
@@ -555,10 +553,7 @@ class BinaryEmulator(MemoryManager):
                 tag = self.get_address_tag(ptr)
                 fmt = "{0:#0{1}x}".format(ptr, 2 + (self.get_ptr_size() * 2))
                 sp_off = "{0:#0{1}x}".format(i * self.get_ptr_size(), 2 * 2)
-                if not tag:
-                    entry = 'sp+%s: %s' % (sp_off, fmt)
-                else:
-                    entry = 'sp+%s: %s -> %s' % (sp_off, fmt, tag)
+                entry = f'sp+{sp_off}: {fmt} -> {tag}' if tag else f'sp+{sp_off}: {fmt}'
                 trace.append(entry)
                 sp += self.get_ptr_size()
         finally:
@@ -694,9 +689,9 @@ class BinaryEmulator(MemoryManager):
         else:
             raise ValueError('Invalid string encoding')
 
-        while int.from_bytes(char, 'little') != 0:
-            if max_chars and i >= max_chars:
-                break
+        while int.from_bytes(char, 'little') != 0 and not (
+            max_chars and i >= max_chars
+        ):
             char = self.mem_read(address, width)
 
             string += char
@@ -949,8 +944,7 @@ class BinaryEmulator(MemoryManager):
 
         # Delete the code hook that got us here
         if ctx and isinstance(ctx, dict):
-            h = ctx.get('_delete_hook')
-            if h:
+            if h := ctx.get('_delete_hook'):
                 h.disable()
 
     def _set_dyn_code_hook(self, addr, size, ctx={}):
@@ -958,9 +952,7 @@ class BinaryEmulator(MemoryManager):
         Set the top level dispatch hook for dynamic code execution
         """
         max_hook_size = 0x10
-        if size > max_hook_size:
-            size = max_hook_size
-
+        size = min(size, max_hook_size)
         ch = self.add_code_hook(cb=self._dynamic_code_cb, begin=addr, end=addr + size, ctx=ctx)
         ctx.update({'_delete_hook': ch})
 
@@ -987,12 +979,11 @@ class BinaryEmulator(MemoryManager):
         if not emu:
             emu = self
         hook = common.ReadMemHook(emu, self.emu_eng, cb, begin, end)
-        hl = self.hooks.get(common.HOOK_MEM_READ)
-        if not hl:
-            self.hooks.update({common.HOOK_MEM_READ: [hook, ]})
-        else:
+        if hl := self.hooks.get(common.HOOK_MEM_READ):
             hl.insert(0, hook)
 
+        else:
+            self.hooks.update({common.HOOK_MEM_READ: [hook, ]})
         if self.emu_eng:
             hook.add()
 
@@ -1005,12 +996,11 @@ class BinaryEmulator(MemoryManager):
         if not emu:
             emu = self
         hook = common.WriteMemHook(emu, self.emu_eng, cb, begin, end)
-        hl = self.hooks.get(common.HOOK_MEM_WRITE)
-        if not hl:
-            self.hooks.update({common.HOOK_MEM_WRITE: [hook, ]})
-        else:
+        if hl := self.hooks.get(common.HOOK_MEM_WRITE):
             hl.insert(0, hook)
 
+        else:
+            self.hooks.update({common.HOOK_MEM_WRITE: [hook, ]})
         if self.emu_eng:
             hook.add()
 
@@ -1023,12 +1013,11 @@ class BinaryEmulator(MemoryManager):
         if not emu:
             emu = self
         hook = common.MapMemHook(emu, self.emu_eng, cb, begin, end)
-        hl = self.hooks.get(common.HOOK_MEM_MAP)
-        if not hl:
-            self.hooks.update({common.HOOK_MEM_MAP: [hook, ]})
-        else:
+        if hl := self.hooks.get(common.HOOK_MEM_MAP):
             hl.insert(0, hook)
 
+        else:
+            self.hooks.update({common.HOOK_MEM_MAP: [hook, ]})
         if self.emu_eng:
             hook.add()
 
@@ -1079,12 +1068,11 @@ class BinaryEmulator(MemoryManager):
         if not emu:
             emu = self
         hook = common.InterruptHook(emu, self.emu_eng, cb, ctx=[])
-        hl = self.hooks.get(common.HOOK_INTERRUPT)
-        if not hl:
-            self.hooks.update({common.HOOK_INTERRUPT: [hook, ]})
-        else:
+        if hl := self.hooks.get(common.HOOK_INTERRUPT):
             hl.insert(0, hook)
 
+        else:
+            self.hooks.update({common.HOOK_INTERRUPT: [hook, ]})
         if self.emu_eng:
             hook.add()
 
@@ -1097,12 +1085,11 @@ class BinaryEmulator(MemoryManager):
         if not emu:
             emu = self
         hook = common.InstructionHook(emu, self.emu_eng, cb, ctx=[], insn=insn)
-        hl = self.hooks.get(common.HOOK_INSN)
-        if not hl:
-            self.hooks.update({common.HOOK_INSN: [hook, ]})
-        else:
+        if hl := self.hooks.get(common.HOOK_INSN):
             hl.insert(0, hook)
 
+        else:
+            self.hooks.update({common.HOOK_INSN: [hook, ]})
         if self.emu_eng:
             hook.add()
 
@@ -1113,13 +1100,11 @@ class BinaryEmulator(MemoryManager):
             emu = self
 
         hook = common.InvalidInstructionHook(emu, self.emu_eng, cb, ctx=[])
-        hl = self.hooks.get(common.HOOK_INSN_INVALID)
-
-        if not hl:
-            self.hooks.update({common.HOOK_INSN_INVALID: [hook, ]})
-        else:
+        if hl := self.hooks.get(common.HOOK_INSN_INVALID):
             hl.insert(0, hook)
 
+        else:
+            self.hooks.update({common.HOOK_INSN_INVALID: [hook, ]})
         if self.emu_eng:
             hook.add()
 

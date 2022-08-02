@@ -55,7 +55,7 @@ class WtsApi32(api.ApiHandler):
         wsi = WTS_SESSION_INFO(emu.get_ptr_size())
 
         size = len(sn) + wsi.sizeof()
-        buf = self.mem_alloc(size=size, tag='api.%s' % (fn))
+        buf = self.mem_alloc(size=size, tag=f'api.{fn}')
 
         wsi.SessionId = 1
         # Write the string at the end of the structure
@@ -85,8 +85,6 @@ class WtsApi32(api.ApiHandler):
         );
         """
         pMemory, = argv
-        rv = 1
-
         self.mem_free(pMemory)
 
-        return rv
+        return 1

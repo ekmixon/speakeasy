@@ -77,11 +77,7 @@ class Shlwapi(api.ApiHandler):
             argv[1] = needle
 
         ret = _hay.find(needle)
-        if ret != -1:
-            ret = hay + ret
-        else:
-            ret = 0
-
+        ret = hay + ret if ret != -1 else 0
         return ret
     
     @apihook('StrStrI', argc=2)
@@ -108,11 +104,7 @@ class Shlwapi(api.ApiHandler):
             needle = needle.lower()
 
         ret = _hay.find(needle)
-        if ret != -1:
-            ret = hay + ret
-        else:
-            ret = 0
-
+        ret = hay + ret if ret != -1 else 0
         return ret
 
     @apihook('PathFindExtension', argc=1)
@@ -147,15 +139,10 @@ class Shlwapi(api.ApiHandler):
         cw = self.get_char_width(ctx)
         s1 = self.read_mem_string(psz1, cw)
         s2 = self.read_mem_string(psz2, cw)
-        rv = 1
-
         argv[0] = s1
         argv[1] = s2
 
-        if s1.lower() == s2.lower():
-            rv = 0
-
-        return rv
+        return 0 if s1.lower() == s2.lower() else 1
 
     @apihook('PathFindFileName', argc=1)
     def PathFindFileName(self, emu, argv, ctx={}):

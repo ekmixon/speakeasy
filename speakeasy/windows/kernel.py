@@ -87,21 +87,17 @@ class WinKernelEmulator(WindowsEmulator, IoManager):
             default_path = self.get_native_module_path('default_sys')
 
             pe = w32common.DecoyModule(path=default_path)
-            if name:
-                bn = ntpath.basename(name)
-            else:
-                bn = 'none'
+            bn = ntpath.basename(name) if name else 'none'
             pe.decoy_path = ('%sdrivers\\%s.sys' %
                              (self.get_system_root(), os.path.basename(bn)))
             pe.decoy_base = pe.get_base()
 
-        else:
-            if not name:
-                bn = pe.path
-                path = '%sdrivers\\%s' % (self.get_system_root(),
-                                          os.path.basename(bn))
-                pe.decoy_path = path
-                pe.decoy_base = pe.base
+        elif not name:
+            bn = pe.path
+            path = '%sdrivers\\%s' % (self.get_system_root(),
+                                      os.path.basename(bn))
+            pe.decoy_path = path
+            pe.decoy_base = pe.base
 
         drv.init_driver_object(name, pe, is_decoy=False)
 
@@ -144,7 +140,7 @@ class WinKernelEmulator(WindowsEmulator, IoManager):
             drv_hash.update(data)
             drv_hash = drv_hash.hexdigest()
             mod_name = drv_hash
-            file_name = '%s.sys' % (mod_name)
+            file_name = f'{mod_name}.sys'
         emu_path = '%sdrivers\\%s' % (self.get_system_root(), file_name)
         pe.emu_path = emu_path
         self.map_pe(pe, mod_name=mod_name, emu_path=emu_path)
@@ -170,7 +166,7 @@ class WinKernelEmulator(WindowsEmulator, IoManager):
             mod, eh = self.api.get_data_export_handler(mn, fn)
             if eh:
                 data_ptr = self.handle_import_data(mn, fn)
-                sym = "%s.%s" % (mn, fn)
+                sym = f"{mn}.{fn}"
                 self.global_data.update({addr: [sym, data_ptr]})
                 self.mem_write(addr,
                                data_ptr.to_bytes(self.get_ptr_size(),
@@ -204,7 +200,10 @@ class WinKernelEmulator(WindowsEmulator, IoManager):
 
         system_proc = self.get_system_process()
 
-        addr = self.mem_map(size, base=None, tag='api.pool.%s.%s' % (pt, tag), process=system_proc)
+        addr = self.mem_map(
+            size, base=None, tag=f'api.pool.{pt}.{tag}', process=system_proc
+        )
+
         self.pool_allocs.append((addr, pooltype, size, tag))
         return addr
 
@@ -216,8 +215,7 @@ class WinKernelEmulator(WindowsEmulator, IoManager):
 
         # Initalize any DRIVER_OBJECTs needed by the module
         for mc in modules_config:
-            drv = mc.get('driver')
-            if drv:
+            if drv := mc.get('driver'):
                 mod = [m for m in sysmods if m.name == mc.get('name')]
                 if not mod:
                     continue
@@ -278,9 +276,7 @@ class WinKernelEmulator(WindowsEmulator, IoManager):
             p.threads.append(t)
             self.processes.append(p)
 
-        # The SYSTEM process should be the starting context
-        sp = [p for p in self.processes if p.name.lower() == 'system']
-        if sp:
+        if sp := [p for p in self.processes if p.name.lower() == 'system']:
             sp = sp[0]
             self.set_current_process(sp)
 
@@ -350,19 +346,12 @@ class WinKernelEmulator(WindowsEmulator, IoManager):
             self.add_run(run)
 
         if self.all_entrypoints:
-            # Only emulate a subset of all the exported functions
-            # There are some modules (such as the windows kernel) with thousands of exports
-            exports = [k for k in module.get_exports()[: MAX_EXPORTS_TO_EMULATE]]
-
-            if exports:
+            if exports := list(module.get_exports()[:MAX_EXPORTS_TO_EMULATE]):
                 args = [self.mem_map(8, tag='emu.export_arg_%d' % (i)) for i in range(4)]
                 for exp in exports:
                     run = Run()
-                    if exp.name:
-                        fn = exp.name
-                    else:
-                        fn = 'no_name'
-                    run.type = 'export.%s' % (fn)
+                    fn = exp.name or 'no_name'
+                    run.type = f'export.{fn}'
                     run.start_addr = exp.address
                     # Here we set dummy args to pass into the export function
                     run.args = args
@@ -385,13 +374,11 @@ class WinKernelEmulator(WindowsEmulator, IoManager):
             devname = r'\Device\%x' % (dev.get_id())
             if not tag:
                 tag = 'emu.device.autogen'
-            name = '%s.%s' % (tag, devname)
         else:
             devname = name
             if not tag:
                 tag = 'emu.object'
-            name = '%s.%s' % (tag, devname)
-
+        name = f'{tag}.{devname}'
         dev.address = self.mem_map(alloc_size, tag=name)
         dev.name = devname
 
@@ -415,7 +402,7 @@ class WinKernelEmulator(WindowsEmulator, IoManager):
                 while next_dev:
                     if next_dev.object.NextDevice:
                         next_dev = \
-                            self.get_object_from_addr(drv.object.NextDevice)
+                                self.get_object_from_addr(drv.object.NextDevice)
                     else:
                         # This is the last in the list, add our new device
                         next_dev.object.NextDevice = dev.address
@@ -534,11 +521,7 @@ class WinKernelEmulator(WindowsEmulator, IoManager):
         if not self.all_entrypoints:
             return
 
-        # TODO right now just use the first device object that was created
-        dev = None
-        if len(drv.devices):
-            dev = drv.devices[0]
-
+        dev = drv.devices[0] if len(drv.devices) else None
         # Run any remaining IRP handlers
         for hdlr, i in ((self.irp_mj_create, ddk.IRP_MJ_CREATE),
                         (self.irp_mj_dev_io, ddk.IRP_MJ_DEVICE_CONTROL),
@@ -690,8 +673,7 @@ class WinKernelEmulator(WindowsEmulator, IoManager):
             ksc64_off = km.find_bytes(b'\x00' * 100, 0)
             if ksc64_off != -1:
                 self.map_decoy(km)
-                sdt = km.get_export_by_name('KeServiceDescriptorTable')
-                if sdt:
+                if sdt := km.get_export_by_name('KeServiceDescriptorTable'):
                     kbase = km.get_base()
                     sdt_addr = kbase + sdt
                     # Set the symbols up
